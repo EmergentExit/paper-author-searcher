@@ -1,12 +1,9 @@
 name: Benchmark
 
 # Live, network-heavy run of the search system over every benchmark person, scored per stratum.
+# Manual only: a meaningful score needs the source keys and the local DBLP and catalog indexes (6+ GB), so set those
+# up first. Without them most sources refuse or throttle the runner and the score says nothing about the code.
 on:
-  push:
-    branches: [main]
-    paths: ["src/**", "data/benchmark/**", ".github/workflows/benchmark.yml"]
-  schedule:
-    - cron: "0 6 * * 1"
   workflow_dispatch:
     inputs:
       release:
