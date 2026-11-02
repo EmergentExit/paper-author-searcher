@@ -43,7 +43,9 @@ class PDFResolver:
         config=DEFAULT_PDF,
         sleep=time.sleep,
         fallbacks=(),
+        deadline=None,
     ):
+        self.deadline = deadline
         self.providers = list(providers)
         self.fallbacks = list(fallbacks)
         self.validator = validator
@@ -108,8 +110,12 @@ class PDFResolver:
         return PDFResolutionResult(results, self._statistics(results))
 
     def _run_lookups(self, jobs, work=None):
-        """Resolve papers concurrently (sources keep their own per-host pacing); yield the running count."""
-        work = work or self._resolve_isolated
+        """Resolve papers concurrently (sources keep their own per-host pacing); yield the running count.
+
+        Papers still waiting when the search's time limit passes are not looked up: each source's pacing would
+        otherwise take minutes over a long list only to have its request refused.
+        """
+        work = self._before_deadline(work or self._resolve_isolated)
         workers = min(self.config.lookup_workers, len(jobs))
         if workers <= 1:
             for processed, job in enumerate(jobs, 1):
@@ -121,6 +127,16 @@ class PDFResolver:
             for processed, future in enumerate(as_completed(futures), 1):
                 future.result()
                 yield processed
+
+    def _out_of_time(self):
+        return self.deadline is not None and self.deadline.expired()
+
+    def _before_deadline(self, work):
+        def guarded(*job):
+            if not self._out_of_time():
+                work(*job)
+
+        return guarded
 
     def _resolve_isolated(self, paper, result):
         try:
@@ -141,7 +157,7 @@ class PDFResolver:
         by_name = {provider.name: provider for provider in self.providers}
         pending = self._failed_source_jobs(jobs, by_name)
         for _ in range(self.config.source_retry_rounds):
-            if not pending:
+            if not pending or self._out_of_time():
                 break
             self.sleep(self.config.source_retry_wait)
             stats['source_retry_rounds'] += 1
@@ -208,7 +224,7 @@ class PDFResolver:
         self.retry_statistics = stats
         pending = self._transient_jobs(jobs)
         for _ in range(self.config.transient_retry_rounds):
-            if not pending:
+            if not pending or self._out_of_time():
                 break
             hosts = {
                 self._failed_host(result.pdf_candidates[index]) for _, result, indexes in pending for index in indexes
@@ -320,6 +336,8 @@ class PDFResolver:
         candidates = []
         lookup_paper = dict(paper, _pdf_landing_pages=[])
         for provider in self.providers:
+            if self._out_of_time():
+                break
             try:
                 found = provider.find(lookup_paper)
             except Exception as exc:
