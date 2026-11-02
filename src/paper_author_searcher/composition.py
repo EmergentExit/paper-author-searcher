@@ -23,6 +23,7 @@ from .homepage_citations import DocumentParser, HtmlCitationParser, PdfCitationP
 from .http import HttpClient
 from .http_budget import CostLedger, DailyBudget, budgeted_client, shared_ledger
 from .http_cache import cached_client
+from .http_deadline import DeadlineHttpClient, SearchDeadline
 from .http_decorators import PacedHttpClient
 from .identity_anchors import AnchorFinder, ScholarlyAnchorFinder
 from .identity_discovery import (
@@ -90,6 +91,7 @@ class RunOptions:
     llm_adjudication: bool = False
     max_cost_usd: float | None = None
     cost_ledger: str = DEFAULT_COST_LEDGER
+    deadline: SearchDeadline | None = None
     http_cache_dir: str | None = None
     http_cache_mode: str | None = None
     verbose: bool = False
@@ -149,8 +151,8 @@ class ServiceContainer:
 
     @cached_property
     def http_client(self) -> Any:
-        """cache -> budget -> pacing -> network: cached replays are free and never wait; real requests are priced
-        and keep each host's interval."""
+        """deadline -> cache -> budget -> pacing -> network: cached replays are free and never wait; real requests
+        are priced and keep each host's interval; past the run's deadline nothing is asked at all."""
         options = self.options
         network = HttpClient(timeout=options.timeout, retries=options.retries, config=self.settings.http)
         limits = self.transport_limits
@@ -159,7 +161,8 @@ class ServiceContainer:
             network, http.host_request_intervals, limits.pacer_factory, http.maximum_host_hold_seconds
         )
         metered = budgeted_client(paced, options.max_cost_usd, options.cost_ledger, limits.daily_budget)
-        return cached_client(metered, options.http_cache_dir, options.http_cache_mode)
+        cached = cached_client(metered, options.http_cache_dir, options.http_cache_mode)
+        return DeadlineHttpClient(cached, options.deadline) if options.deadline else cached
 
     @cached_property
     def dblp_index(self) -> DblpDumpIndex | None:
@@ -445,6 +448,7 @@ class ServiceContainer:
             self.resource_requests,
             self.pdf_config,
             fallbacks=self.pdf_fallbacks,
+            deadline=self.options.deadline,
         )
 
     @cached_property
