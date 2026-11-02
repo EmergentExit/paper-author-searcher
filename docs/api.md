@@ -80,10 +80,15 @@ queued → running → succeeded
 
 - `running` 时，`progress` 给出当前阶段，以及已完成数和总数（论文级计数）。
 - `succeeded`：返回 `result`，包含身份、论文列表和统计。`run_status` 为 `partial`，表示部分来源出错，或有文件待审。
+- `result.notices` 列出影响整个结果的情况，调用方应该看：
+  - `paper_source_failed`：某个来源的论文列表读取失败，可能缺论文，例如 OpenAlex 密钥失效时会缺很多；
+  - `time_limit_reached`：到了 `maximum_search_seconds`，搜索不再请求数据源，返回的内容都经过校验，但列表或全文可能不完整；
+  - `web_search_off`、`claude_unavailable`：见[部署手册](deployment.md)。
 - `failed`：返回 `error`，其中 `code` 为以下之一：
   - `identity_not_found`：没有任何匹配的人；
   - `selection_rejected`；
   - `search_failed`；
+  - `time_limit_reached`：到时间上限时还没有任何结果；
   - `internal_error`。
 
 ## 同名者确认
