@@ -25,6 +25,9 @@ class ServiceConfig:
     # Worker threads inside `serve`; 0 leaves every search to separate `paper-search-api worker` processes.
     workers: int = 1
     maximum_cost_usd: float = 0.5
+    # A search past this stops asking sources and returns what it has found, with a notice (0: no limit). One
+    # prolific author would otherwise hold a worker for hours while other searches wait.
+    maximum_search_seconds: float = 3600.0
     # Every worker of a deployment shares these (host, seconds between requests) intervals and daily budgets, so
     # adding workers does not add traffic past what a source allows. They replace http.host_request_intervals.
     shared_host_intervals: tuple[tuple[str, float], ...] = (
@@ -128,6 +131,7 @@ class ServiceConfig:
         if self.stale_after_seconds <= self.heartbeat_seconds:
             raise ValueError('stale_after_seconds must exceed heartbeat_seconds')
         for name in (
+            'maximum_search_seconds',
             'maximum_active_searches',
             'maximum_searches_per_hour',
             'retention_days',

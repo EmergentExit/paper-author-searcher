@@ -86,6 +86,7 @@ def assemble(
         RunnerOptions(
             data / 'runs',
             maximum_cost_usd=service_config.maximum_cost_usd,
+            maximum_search_seconds=service_config.maximum_search_seconds,
             http_cache_directory=service_config.http_cache_directory or None,
             http_cache_mode=service_config.http_cache_mode,
         ),

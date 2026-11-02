@@ -116,7 +116,7 @@ paper-benchmark score --run-id replay-x
 ## CI
 
 - `.github/workflows/ci.yml`：每次 push / PR 运行全部离线单元测试和 `paper-benchmark validate`。
-- `.github/workflows/benchmark.yml`：推送到 main（改动 `src/` 或评测集时）、每周一定时、或手动触发，联网运行完整评测并执行门槛；未审核导致的 `not_certifiable` 平时只给 warning，手动触发时勾选 `release` 则视为失败。报告作为 artifact 上传。
+- `.github/workflows/benchmark.yml`：只能手动触发，联网运行完整评测并执行门槛。有意义的分数需要数据源密钥和本地 DBLP、书目库索引，要先在仓库 secrets 和工作流里配好，否则大部分数据源会拒绝或限流，分数不反映代码质量；未审核导致的 `not_certifiable` 平时只给 warning，手动触发时勾选 `release` 则视为失败。报告作为 artifact 上传。
 
 联网评测依赖外部 API 的可用性和限流，同一代码两次运行的数字可能有小幅波动；比较版本时应使用同一套真值。
 

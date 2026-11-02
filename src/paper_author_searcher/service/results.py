@@ -18,6 +18,7 @@ from paper_author_searcher.status import (
 MAXIMUM_EVIDENCE = 5
 # Warnings about the whole result that a caller should see, as opposed to one paper's lookup details.
 NOTICE_CODES = {WEB_SEARCH_OFF}
+PAPER_SOURCE_FAILED = 'paper_source_failed'
 MAXIMUM_CANDIDATES = 10
 # arXiv DOIs name a preprint edition; another edition of the same work is preferred as the work's main entry.
 PREPRINT_DOI_PREFIX = '10.48550/'
@@ -121,7 +122,8 @@ class ResultView:
                 {'code': item['code'], 'message': str(item.get('warning'))}
                 for item in report.get('warnings') or []
                 if item.get('code') in NOTICE_CODES
-            ],
+            ]
+            + _failed_paper_sources(report),
         }
 
     @staticmethod
@@ -261,6 +263,24 @@ class ResultView:
             return None
         path = root / name
         return read_json(path) if path.exists() else None
+
+
+def _failed_paper_sources(report: dict[str, Any]) -> list[dict[str, str]]:
+    """A source that could not list the person's papers can hide most of them, unlike one paper's failed lookup.
+
+    A source with no author ID was never asked: the person may simply not be in it.
+    """
+    failed = sorted(
+        {
+            str(item.get('source'))
+            for item in report.get('collection_sources') or []
+            if item.get('error') and item.get('author_id')
+        }
+    )
+    if not failed:
+        return []
+    message = f'Could not read the paper list from {", ".join(failed)}: some of this person\'s papers may be missing.'
+    return [{'code': PAPER_SOURCE_FAILED, 'message': message}]
 
 
 def _keys(source: Any, paper_id: Any, doi: Any) -> list[tuple[str, str]]:
