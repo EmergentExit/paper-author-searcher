@@ -900,14 +900,16 @@ class ResultTests(unittest.TestCase):
             self.report,
             warnings=[],
             collection_sources=[
-                {'source': 'semantic_scholar', 'error': None},
-                {'source': 'openalex', 'error': 'HTTP 401 from api.openalex.org'},
+                {'source': 'semantic_scholar', 'author_id': '1', 'error': None},
+                {'source': 'dblp', 'author_id': None, 'error': 'No confirmed Author ID for this source'},
+                {'source': 'openalex', 'author_id': 'A1', 'error': 'HTTP 401 from api.openalex.org'},
             ],
         )
         notices = self.view.build(report)['notices']
         self.assertEqual([notice['code'] for notice in notices], ['paper_source_failed'])
         self.assertIn('openalex', notices[0]['message'])
         self.assertNotIn('semantic_scholar', notices[0]['message'])
+        self.assertNotIn('dblp', notices[0]['message'])
         self.assertNotIn('401', notices[0]['message'])
 
     def test_needs_review_papers_only_when_asked(self):

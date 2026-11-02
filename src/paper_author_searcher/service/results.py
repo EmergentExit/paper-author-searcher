@@ -266,8 +266,17 @@ class ResultView:
 
 
 def _failed_paper_sources(report: dict[str, Any]) -> list[dict[str, str]]:
-    """A source that could not list the person's papers can hide most of them, unlike one paper's failed lookup."""
-    failed = sorted({str(item.get('source')) for item in report.get('collection_sources') or [] if item.get('error')})
+    """A source that could not list the person's papers can hide most of them, unlike one paper's failed lookup.
+
+    A source with no author ID was never asked: the person may simply not be in it.
+    """
+    failed = sorted(
+        {
+            str(item.get('source'))
+            for item in report.get('collection_sources') or []
+            if item.get('error') and item.get('author_id')
+        }
+    )
     if not failed:
         return []
     message = f'Could not read the paper list from {", ".join(failed)}: some of this person\'s papers may be missing.'
