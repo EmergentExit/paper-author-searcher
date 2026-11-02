@@ -9,6 +9,7 @@ from typing import Any
 from paper_author_searcher.composition import RunOptions, ServiceContainer, llm_ledger_name
 from paper_author_searcher.config import AmbiguityPolicy
 from paper_author_searcher.http_budget import release_ledger
+from paper_author_searcher.http_deadline import SearchDeadline
 from paper_author_searcher.models import ProfessorQuery
 from paper_author_searcher.settings import Settings
 from paper_author_searcher.status import RunStatus
@@ -25,6 +26,11 @@ CLAUDE_UNAVAILABLE = {
     'message': 'Claude could not be reached (billing, key or outage): publication lists on pages and scanned PDFs '
     'were not read, so the paper list or full text may be incomplete.',
 }
+TIME_LIMIT_CODE = 'time_limit_reached'
+TIME_LIMIT_MESSAGE = (
+    'The search reached its time limit and stopped asking sources: everything returned was checked, but the paper '
+    'list or full text may be incomplete.'
+)
 
 
 def query_from_request(request: dict[str, Any]) -> ProfessorQuery:
@@ -52,6 +58,8 @@ class RunnerOptions:
     run_directory: Path
     # Spend cap per run (OpenAlex and other metered calls); every run has its own ledger.
     maximum_cost_usd: float = 0.5
+    # Past this a run stops asking sources and returns what it has found; 0 means no limit.
+    maximum_search_seconds: float = 0.0
     http_cache_directory: str | None = None
     http_cache_mode: str | None = None
 
@@ -78,7 +86,9 @@ class WorkflowRunner:
     def run(self, job: Job, identity_checkpoint: Path | None, progress: Progress) -> SearchOutcome:
         request = job.request
         ledger = f'service:{job.id}:{job.attempts}'
-        workflow = self.container(self.available(self.settings), self._run_options(job, ledger)).workflow(
+        seconds = self.options.maximum_search_seconds
+        deadline = SearchDeadline(seconds) if seconds else None
+        workflow = self.container(self.available(self.settings), self._run_options(job, ledger, deadline)).workflow(
             progress=progress
         )
         limits = request.get('limits') or {}
@@ -100,7 +110,20 @@ class WorkflowRunner:
         outcome = self.outcome(job, report, spent)
         if llm.get('failed_requests') and outcome.result is not None:
             outcome.result.setdefault('notices', []).append(CLAUDE_UNAVAILABLE)
+        if deadline is not None and deadline.reached:
+            outcome = self._out_of_time(outcome)
         return replace(outcome, llm_cost_usd=llm.get('estimated_cost_usd', 0.0))
+
+    @staticmethod
+    def _out_of_time(outcome: SearchOutcome) -> SearchOutcome:
+        """Say the limit ended the run; a search it left with no result failed because of it, not for lack of match."""
+        if outcome.result is not None:
+            outcome.result.setdefault('notices', []).append({'code': TIME_LIMIT_CODE, 'message': TIME_LIMIT_MESSAGE})
+            return outcome
+        if outcome.status != JobStatus.FAILED:
+            return outcome
+        details = (outcome.error or {}).get('details') or []
+        return replace(outcome, error={'code': TIME_LIMIT_CODE, 'message': TIME_LIMIT_MESSAGE, 'details': details})
 
     @staticmethod
     def available(settings: Settings) -> Settings:
@@ -173,8 +196,9 @@ class WorkflowRunner:
             JobStatus.SUCCEEDED, result=result, files=files, cost_usd=cost_usd, run_directory=directory
         )
 
-    def _run_options(self, job: Job, ledger: str) -> RunOptions:
+    def _run_options(self, job: Job, ledger: str, deadline: SearchDeadline | None = None) -> RunOptions:
         return RunOptions(
+            deadline=deadline,
             mode=job.request.get('mode', 'full'),
             ambiguity_policy=AmbiguityPolicy.COLLECT_CONTENDERS
             if job.request.get('on_ambiguity') == 'collect_contenders'

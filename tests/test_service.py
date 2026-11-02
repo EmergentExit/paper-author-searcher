@@ -15,6 +15,7 @@ from unittest import mock
 
 from paper_author_searcher.api.schema import validator
 from paper_author_searcher.config import ServiceConfig
+from paper_author_searcher.http import SourceError
 from paper_author_searcher.service.facade import SearchService
 from paper_author_searcher.service.files import LocalFileStore, S3FileStore
 from paper_author_searcher.service.indexes import IndexRefresher
@@ -738,6 +739,42 @@ class RunnerOutcomeTests(unittest.TestCase):
         rejected = self.runner.outcome(Job('s', 'k', REQUEST, selection='openalex:A1'), report)
         self.assertEqual(rejected.error['code'], 'selection_rejected')
 
+    def _run_past_the_limit(self, report):
+        options = []
+
+        class Workflow:
+            def run(self, **_):
+                options[0].deadline.expires_at = 0.0
+                with self_test.assertRaises(SourceError):
+                    options[0].deadline.check()
+                return report
+
+        class Container:
+            def __init__(self, _settings, run_options):
+                options.append(run_options)
+
+            def workflow(self, progress):
+                return Workflow()
+
+        self_test = self
+        runner = WorkflowRunner(
+            Settings(), RunnerOptions(Path('/tmp/unused'), maximum_search_seconds=60), lambda job, paper: '', Container
+        )
+        return runner.run(self.job, None, lambda *_: None)
+
+    def test_a_search_past_its_limit_keeps_its_result_and_says_so(self):
+        with tempfile.TemporaryDirectory() as directory:
+            outcome = self._run_past_the_limit({'run_status': 'partial', 'output_directory': directory})
+        self.assertEqual(outcome.status, 'succeeded')
+        self.assertEqual([notice['code'] for notice in outcome.result['notices']], ['time_limit_reached'])
+
+    def test_a_search_the_limit_left_with_nothing_fails_for_that_reason(self):
+        outcome = self._run_past_the_limit({'run_status': 'identity_confirmation_required', 'identity': {}})
+        self.assertEqual((outcome.status, outcome.error['code']), ('failed', 'time_limit_reached'))
+
+    def test_no_limit_gives_no_deadline(self):
+        self.assertIsNone(self.runner._run_options(self.job, 'ledger').deadline)
+
     def test_failed_runs_fail_the_job(self):
         outcome = self.runner.outcome(self.job, {'run_status': 'failed', 'errors': [{'error': 'source down'}]})
         self.assertEqual((outcome.status, outcome.error['details']), ('failed', ['source down']))
@@ -857,6 +894,23 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.view.file_path(self.report, '0'), (self.root / 'papers' / 'a.pdf').resolve())
         self.assertIsNone(self.view.file_path(self.report, '1'))
         self.assertIsNone(self.view.file_path(self.report, '9'))
+
+    def test_a_source_that_could_not_list_papers_gets_a_notice_naming_it(self):
+        report = dict(
+            self.report,
+            warnings=[],
+            collection_sources=[
+                {'source': 'semantic_scholar', 'author_id': '1', 'error': None},
+                {'source': 'dblp', 'author_id': None, 'error': 'No confirmed Author ID for this source'},
+                {'source': 'openalex', 'author_id': 'A1', 'error': 'HTTP 401 from api.openalex.org'},
+            ],
+        )
+        notices = self.view.build(report)['notices']
+        self.assertEqual([notice['code'] for notice in notices], ['paper_source_failed'])
+        self.assertIn('openalex', notices[0]['message'])
+        self.assertNotIn('semantic_scholar', notices[0]['message'])
+        self.assertNotIn('dblp', notices[0]['message'])
+        self.assertNotIn('401', notices[0]['message'])
 
     def test_needs_review_papers_only_when_asked(self):
         result = self.view.build(self.report, include_needs_review=True)

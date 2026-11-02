@@ -56,6 +56,7 @@
 | `PAPER_SEARCH__SERVICE__API_KEY_HASHES` | 空 | `id:name:sha256`，多个用逗号分隔；也可以用数据卷里的密钥文件 |
 | `PAPER_SEARCH__SERVICE__WORKERS` | 1 | `serve` 进程内的 worker 线程数；compose 里是 0，由 worker 服务执行搜索 |
 | `PAPER_SEARCH__SERVICE__MAXIMUM_COST_USD` | 0.5 | 每次搜索的计费 API 花费上限 |
+| `PAPER_SEARCH__SERVICE__MAXIMUM_SEARCH_SECONDS` | 3600 | 每次搜索的时间上限，到时后不再请求数据源，返回已经找到的内容并附 `time_limit_reached`；0 不限 |
 | `PAPER_SEARCH__SERVICE__FILE_STORE` | local | `local` 或 `s3` |
 | `PAPER_SEARCH__SERVICE__S3_ENDPOINT` / `S3_PUBLIC_ENDPOINT` / `S3_BUCKET` | | 服务访问存储用的地址、调用方下载用的地址、桶名 |
 | `PAPER_SEARCH__SERVICE__STALE_AFTER_SECONDS` | 120 | worker 多久没有心跳算死掉 |
@@ -325,8 +326,8 @@ python scripts/loadtest/run.py --workers 1 4 --searches 16
 
 搜索期间 CPU 几乎空闲，时间花在等网络和按数据源限速上（例如 arXiv 每 3 秒一次），所以增加 CPU 不会变快。
 
-- **worker 数量：** 从 3 个开始。一个高产作者可能占用一个 worker 几个小时，只有 1 个 worker 时其他搜索都要排队。
-- **没有单次搜索的时间上限：** 高产作者会触发"搜索过慢"或"队列卡住"告警，这时先确认是不是这种情况。
+- **worker 数量：** 从 3 个开始。一个高产作者可能占用一个 worker 到时间上限，只有 1 个 worker 时其他搜索都要排队。
+- **单次搜索的时间上限：** 默认 1 小时（`MAXIMUM_SEARCH_SECONDS`）。到时后搜索很快结束并返回已经找到的内容，结果里有 `time_limit_reached`，高产作者的全文可能不完整。
 - **调用方：** 请按小时而不是分钟等待结果，用轮询，不要同步等待。
 
 | 用法 | 推荐配置（DigitalOcean Basic） | 月费 |
