@@ -38,6 +38,8 @@ class ServiceConfig:
         ('www.ebi.ac.uk', 0.1),
         ('api.openaire.eu', 0.5),
         ('export.arxiv.org', 3.0),
+        # MIT's repository answers 429 to faster downloads.
+        ('dspace.mit.edu', 2.0),
         ('api.tavily.com', 0.5),
         ('api.search.brave.com', 1.0),
         ('api.exa.ai', 0.5),
