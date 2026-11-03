@@ -48,6 +48,9 @@
   .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
   .candidate { border-top: 1px solid var(--line); padding: 12px 0; }
   .candidate:first-of-type { border-top: 0; }
+  .candidate .muted { margin: 4px 0; }
+  .hint { background: var(--line); border-radius: 7px; padding: 10px 12px; margin-bottom: 12px; font-size: 14px; }
+  details summary { cursor: pointer; padding: 12px 0; border-top: 1px solid var(--line); }
   .hidden { display: none; }
   @media (max-width: 640px) { form { grid-template-columns: 1fr; } td.venue, th.venue { display: none; } }
 </style>
@@ -166,10 +169,54 @@
     $('go').disabled = job.status === 'queued' || job.status === 'running';
   }
 
+  // A candidate's profile pages, so the person choosing can see its papers.
+  const PROFILE_PAGES = {
+    openalex: ['OpenAlex', (id) => 'https://openalex.org/authors/' + id],
+    semantic_scholar: ['Semantic Scholar', (id) => 'https://www.semanticscholar.org/author/' + id],
+    dblp: ['DBLP', (id) => 'https://dblp.org/pid/' + id + '.html'],
+  };
+
+  function profileLinks(candidate) {
+    const links = document.createElement('div');
+    links.className = 'muted';
+    const pages = (candidate.selections || []).map((selection) => {
+      const [source, ...rest] = selection.split(':');
+      return PROFILE_PAGES[source] && [PROFILE_PAGES[source][0], PROFILE_PAGES[source][1](rest.join(':'))];
+    }).filter(Boolean);
+    if (candidate.orcid) pages.push(['ORCID', 'https://orcid.org/' + candidate.orcid]);
+    if (!pages.length) return links;
+    links.append('查看档案和论文：');
+    pages.forEach(([label, url], index) => {
+      const link = document.createElement('a');
+      link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = label;
+      if (index) links.append(' · ');
+      links.append(link);
+    });
+    return links;
+  }
+
   function renderCandidates(job) {
     const list = $('candidates');
     list.replaceChildren();
-    for (const candidate of job.candidates || []) {
+    const all = job.candidates || [];
+    const described = all.filter((candidate) => (candidate.affiliations || []).length || candidate.orcid);
+    const bare = all.filter((candidate) => !described.includes(candidate));
+    const school = (job.request || {}).university;
+    if (school && !all.some((candidate) => (candidate.evidence || []).some((line) => line.startsWith('University matched')))) {
+      const hint = document.createElement('div');
+      hint.className = 'hint';
+      hint.textContent = `你填的学校「${school}」和所有候选人的机构都对不上，可能是拼写有误。可以改正后重新搜索，或者对照下面的机构和档案自己判断。`;
+      list.append(hint);
+    }
+    let folded = null;
+    if (bare.length && described.length) {
+      folded = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.className = 'muted';
+      summary.textContent = `另外 ${bare.length} 个档案没有任何学校信息（数据库常把同一个人拆成好几个零散档案），点开查看`;
+      folded.append(summary);
+    }
+    for (const candidate of [...described, ...bare]) {
       const item = document.createElement('div');
       item.className = 'candidate';
       const title = document.createElement('div');
@@ -188,9 +235,10 @@
         try { render(await api('POST', job.links.confirmation, { selection: candidate.selections[0] })); poll(job.id); }
         catch (error) { alert(error.message); pick.disabled = false; }
       };
-      item.append(title, evidence, pick);
-      list.append(item);
+      item.append(title, evidence, profileLinks(candidate), pick);
+      (folded && bare.includes(candidate) ? folded : list).append(item);
     }
+    if (folded) list.append(folded);
   }
 
   function renderResult(job) {
