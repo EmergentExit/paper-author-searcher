@@ -83,8 +83,11 @@ def metadata_title_kind(
     title = html.unescape(title).strip()
     if not title or re.search(r'\.(?:dvi|tex|ps|eps|pdf|pptx?|docx?|odt|rtf)\s*$', title, re.I):
         return 'technical'
-    if normalize_title(title) == normalize_title(expected) or _compact(title) == _compact(expected):
-        return 'matching'
+    if normalize(title) in {normalize(value) for value in DEFAULT_DOWNLOAD.boilerplate_metadata_titles}:
+        return 'technical'
+    for written in dict.fromkeys((title, _repaired_encoding(title))):
+        if normalize_title(written) == normalize_title(expected) or _compact(written) == _compact(expected):
+            return 'matching'
     # A series/volume prefix is bibliographic decoration, not another paper title.
     prefix = re.match(r'^[A-Z][A-Z0-9. ]*\s+\d+(?:\s*[,/]\s*\d+)*\s*[-:]\s*(.+)$', title)
     if prefix and normalize_title(prefix.group(1)) == normalize_title(expected):
@@ -93,6 +96,22 @@ def metadata_title_kind(
     if min(len(title.split()), len(normalize_title(title).split())) < minimum_words:
         return 'technical'
     return 'conflicting'
+
+
+def _repaired_encoding(title: str) -> str:
+    """A title whose UTF-8 bytes were read as Windows-1252 ("IscB–Ï‰RNA" for "IscB–ωRNA"), repaired run by run."""
+
+    def repair(match: re.Match[str]) -> str:
+        try:
+            return match.group().encode('cp1252').decode('utf-8')
+        except UnicodeError:
+            return match.group()
+
+    return _MISREAD_UTF8.sub(repair, title)
+
+
+# A UTF-8 lead byte and its continuation bytes, each shown as its Windows-1252 character.
+_MISREAD_UTF8 = re.compile('[\u00c2-\u00f4][\u0080-\u00bf\u0152-\u0178\u0192\u02c6\u02dc\u2013-\u2122]{1,3}')
 
 
 def _compact(title: str) -> str:

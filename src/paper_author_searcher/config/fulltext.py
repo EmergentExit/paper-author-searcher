@@ -188,7 +188,8 @@ DEFAULT_PDF = PDFConfig()
 
 @dataclass(frozen=True)
 class DownloadConfig:
-    maximum_file_bytes: int = 50 * 1024 * 1024
+    # Open-access papers with full-resolution figures (Nature, PMC copies) run to about 90 MiB.
+    maximum_file_bytes: int = 128 * 1024 * 1024
     chunk_bytes: int = 64 * 1024
     maximum_transfer_seconds: float = 300
     maximum_redirects: int = DEFAULT_PDF.maximum_redirects
@@ -198,7 +199,8 @@ class DownloadConfig:
     parser_timeout: float = 30
     parser_memory_bytes: int = 768 * 1024 * 1024
     maximum_pages: int = 2000
-    maximum_page_content_bytes: int = 8 * 1024 * 1024
+    # One page's decoded content stream; a vector figure page of a biology paper decodes to about 30 MiB.
+    maximum_page_content_bytes: int = 64 * 1024 * 1024
     identity_pages: int = 2
     # A file the first extraction could not place gets its first page read by pdfminer under these layouts (keyword
     # arguments of LAParams): as the page's text flow runs, and strictly top to bottom. Empty: no second reading.
@@ -219,6 +221,8 @@ class DownloadConfig:
     # A PDF title metadata value shorter than this is a record number, file stem or placeholder ("68605761",
     # "mcedit_fetal_heart_manuscript", "My title"), not another paper's title, so it never vetoes identity.
     metadata_title_minimum_words: int = 3
+    # Title metadata a publisher stamps on every article PDF: the site's name, not another paper's title.
+    boilerplate_metadata_titles: tuple[str, ...] = ('Science Journals — AAAS',)
     # Words that end a title when extraction runs it into the next line ("<title> Authors: A, B").
     title_byline_labels: tuple[str, ...] = ('author', 'authors', 'by')
     footer_scan_bytes: int = 4096

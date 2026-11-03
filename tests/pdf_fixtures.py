@@ -16,6 +16,7 @@ def make_pdf(
     creator=None,
     text_lines=None,
     page_size=(612, 792),
+    figure_bytes=0,
 ):
     from pypdf import PdfWriter
     from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
@@ -52,6 +53,9 @@ def make_pdf(
             escaped = line.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
             commands.append(f'({escaped}) Tj 0 -20 Td')
         commands.append('ET')
+        if figure_bytes:
+            # A path-drawing operator run, as a vector figure fills a page's content stream.
+            commands.append('0 0 m ' * (figure_bytes // 6))
         stream = DecodedStreamObject()
         stream.set_data('\n'.join(commands).encode('latin-1'))
         page[NameObject('/Contents')] = writer._add_object(stream)

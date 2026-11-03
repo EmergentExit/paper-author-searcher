@@ -43,6 +43,7 @@ class FrontMatterTests(unittest.TestCase):
             'mcedit_fetal_heart_manuscript_medrxiv',
             'My title',
             'Microsoft Word - draft_v4.docx',
+            'Science Journals — AAAS',
         ):
             self.assertEqual(metadata_title_kind(value, paper['title']), 'technical', value)
             self.assertEqual(content_identity(paper, [value], [front], front, '')[0], 'verified', value)
@@ -63,6 +64,13 @@ class FrontMatterTests(unittest.TestCase):
         self.assertEqual(
             metadata_title_kind("Reconstruction with B\\'ezier Curves", 'Reconstruction with Bézier Curves'), 'matching'
         )
+
+    def test_title_metadata_read_in_the_wrong_encoding_still_matches(self):
+        title = 'Structure of the IscB–ωRNA ribonucleoprotein complex, the likely ancestor of CRISPR-Cas9'
+        misread = 'Structure of the IscB–Ï‰RNA ribonucleoprotein complex, the likely ancestor of CRISPR-Cas9'
+        self.assertEqual(metadata_title_kind(misread, title), 'matching')
+        self.assertEqual(metadata_title_kind('Café société', 'Café société'), 'matching')
+        self.assertEqual(metadata_title_kind('Structure of the IscB–Ï‰RNA complex in bacteria', title), 'conflicting')
 
     def test_a_short_but_real_title_and_a_supplement_still_conflict(self):
         self.assertEqual(metadata_title_kind('Unrelated scientific findings', target()['title']), 'conflicting')
