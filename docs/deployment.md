@@ -239,13 +239,7 @@ sudo netfilter-persistent save
 
 **第 3 步：** `alertmanager.yml` 里的 `smtp_smarthost` 填 `smtp.gmail.com:587`，把 Gmail 应用专用密码写进 `deploy/secrets/ALERT_SMTP_PASSWORD`。
 
-**第 4 步：** 在服务器上直接构建镜像，不设置 `PAPER_SEARCH_IMAGE`。`release.yml` 目前只构建 x86 镜像，不能在 Arm 上运行。
-
-```bash
-docker compose -f deploy/compose.yaml --profile public --profile monitoring up -d --build --scale worker=3
-```
-
-升级时先 `git pull`，再执行同一条命令。回滚就是 `git checkout` 到上一个版本，再执行一次。
+**第 4 步：** 照做。从 `v0.1.1` 起发布的镜像同时支持 x86 和 Arm，Docker 会自动拉取 Arm 版本，`PAPER_SEARCH_IMAGE` 照常填 tag。`v0.1.0` 只有 x86，不能在 Arm 上运行。
 
 **不要做这两件事，否则会开始计费：** 把 Oracle 账号升级成按量付费；给 Tavily 绑卡。
 
