@@ -221,6 +221,8 @@ class DownloadConfig:
     # A PDF title metadata value shorter than this is a record number, file stem or placeholder ("68605761",
     # "mcedit_fetal_heart_manuscript", "My title"), not another paper's title, so it never vetoes identity.
     metadata_title_minimum_words: int = 3
+    # Title metadata a publisher stamps on every article PDF: the site's name, not another paper's title.
+    boilerplate_metadata_titles: tuple[str, ...] = ('Science Journals — AAAS',)
     # Words that end a title when extraction runs it into the next line ("<title> Authors: A, B").
     title_byline_labels: tuple[str, ...] = ('author', 'authors', 'by')
     footer_scan_bytes: int = 4096
