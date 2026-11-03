@@ -172,7 +172,7 @@ class PacedClientTests(unittest.TestCase):
         container = ServiceContainer(Settings(), RunOptions(), transport_limits=TransportLimits(pacer_factory=factory))
         self.assertIs(container.with_settings(Settings()).transport_limits, container.transport_limits)
         self.assertIsNotNone(container.http_client)
-        self.assertEqual(used, [3.0])
+        self.assertEqual(used, [interval for _, interval in Settings().http.host_request_intervals])
 
 
 class ClaudeBudgetTests(unittest.TestCase):

@@ -295,7 +295,7 @@ python3 -m paper_author_searcher.download_cli \
 
 已安装项目时也可运行 `pdf-download`。使用本项目 `.venv` 时，将 `python3` 替换为 `.venv/bin/python`；当前环境需要的可信 CA 配置可继续使用 `SSL_CERT_FILE=/etc/ssl/cert.pem`。下载依赖固定为 `pypdf>=5.9,<6`，原有其他阶段不必安装此可选依赖。
 
-HTTP 流式写入临时 `.part` 文件，默认限制单文件 50 MiB，逐块计算 SHA-256，核对实际大小和完整响应。重定向和 DNS 结果逐一检查，禁止本地/内网目标、凭据 URL 与非配置端口；连接固定到已经检查的公网 IP，同时保留原主机名的 TLS 验证。下载器不使用环境代理，不处理登录或验证码。
+HTTP 流式写入临时 `.part` 文件，默认限制单文件 128 MiB，逐块计算 SHA-256，核对实际大小和完整响应。重定向和 DNS 结果逐一检查，禁止本地/内网目标、凭据 URL 与非配置端口；连接固定到已经检查的公网 IP，同时保留原主机名的 TLS 验证。下载器不使用环境代理，不处理登录或验证码。
 
 文件头、EOF/cross-reference 及所有页面内容流通过严格 PDF 解析后才保存为 `.pdf`。文件格式与论文内容身份分别记录：内容中的 DOI/标题一致，或没有 DOI 时独特标题与完整作者署名一致，才确认身份；证据不足进入 `needs_review/`，明确的不同论文进入 `quarantine/`。程序不执行 PDF 的 JavaScript、动作或嵌入文件。
 
