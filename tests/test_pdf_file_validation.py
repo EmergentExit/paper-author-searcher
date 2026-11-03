@@ -217,6 +217,11 @@ class PDFParsingTests(unittest.TestCase):
             'invalid',
         )
 
+    def test_figure_heavy_page_within_default_limit(self):
+        # A vector figure page of a biology paper decodes to tens of MiB; the old 8 MiB limit dropped such papers.
+        result = self.validate(make_pdf(figure_bytes=9 * 1024 * 1024))
+        self.assertEqual(result.format_status, 'valid')
+
     def test_javascript_is_observed_but_never_executed(self):
         result = self.validate(make_pdf(javascript='throw new Error("must never execute");'))
         self.assertEqual(result.format_status, 'valid')
