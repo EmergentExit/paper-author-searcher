@@ -10,8 +10,8 @@
     "api_version": {"const": "v1"},
     "search_id": {"type": "string"},
     "status": {
-      "description": "ready: papers to cite; nothing_usable: finished, but nothing passed the checks; pending: still running; needs_confirmation: a person must pick among namesakes; failed.",
-      "enum": ["ready", "nothing_usable", "pending", "needs_confirmation", "failed"]
+      "description": "ready: papers to cite; nothing_usable: finished, but nothing passed the checks; pending: still running; needs_confirmation: a person must pick among namesakes; failed; cancelled: its owner stopped it.",
+      "enum": ["ready", "nothing_usable", "pending", "needs_confirmation", "failed", "cancelled"]
     },
     "usable": {"description": "True only when `papers` is not empty.", "type": "boolean"},
     "researcher": {

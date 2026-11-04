@@ -13,9 +13,13 @@ class JobStatus(StrEnum):
     NEEDS_CONFIRMATION = 'needs_confirmation'
     SUCCEEDED = 'succeeded'
     FAILED = 'failed'
+    CANCELLED = 'cancelled'
 
 
-FINISHED = (JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.NEEDS_CONFIRMATION)
+FINISHED = (JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.NEEDS_CONFIRMATION, JobStatus.CANCELLED)
+# A search its owner may still stop: waiting, working, or waiting for them to pick a candidate.
+STOPPABLE = (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.NEEDS_CONFIRMATION)
+CANCELLED_ERROR = {'code': 'cancelled', 'message': 'The search was stopped by its owner'}
 
 
 FILE_BEARING_FULL_TEXT = 'file'

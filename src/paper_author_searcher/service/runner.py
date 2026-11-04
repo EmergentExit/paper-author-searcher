@@ -1,6 +1,8 @@
 """SearchRunner adapter: one search through the paper-search workflow, in a scratch run directory."""
 
 import logging
+import math
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -83,11 +85,18 @@ class WorkflowRunner:
         self.download_link = download_link
         self.container = container
 
-    def run(self, job: Job, identity_checkpoint: Path | None, progress: Progress) -> SearchOutcome:
+    def run(
+        self,
+        job: Job,
+        identity_checkpoint: Path | None,
+        progress: Progress,
+        stop: threading.Event | None = None,
+    ) -> SearchOutcome:
         request = job.request
         ledger = f'service:{job.id}:{job.attempts}'
         seconds = self.options.maximum_search_seconds
-        deadline = SearchDeadline(seconds) if seconds else None
+        # Without a time limit the deadline still carries ``stop``, so a stopped search ends just as fast.
+        deadline = SearchDeadline(seconds or math.inf, stop=stop) if seconds or stop is not None else None
         workflow = self.container(self.available(self.settings), self._run_options(job, ledger, deadline)).workflow(
             progress=progress
         )
@@ -110,7 +119,7 @@ class WorkflowRunner:
         outcome = self.outcome(job, report, spent)
         if llm.get('failed_requests') and outcome.result is not None:
             outcome.result.setdefault('notices', []).append(CLAUDE_UNAVAILABLE)
-        if deadline is not None and deadline.reached:
+        if deadline is not None and deadline.reached and not deadline.stopped:
             outcome = self._out_of_time(outcome)
         return replace(outcome, llm_cost_usd=llm.get('estimated_cost_usd', 0.0))
 
