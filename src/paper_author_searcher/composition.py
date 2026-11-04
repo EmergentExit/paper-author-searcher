@@ -63,6 +63,7 @@ from .resolver import ProfessorResolver
 from .settings import Settings
 from .source_catalog import IDENTITY_SOURCES, NAME_SEARCHES, PAPER_SOURCES, PDF_SOURCES, WEB_SEARCH, WORK_LOOKUPS
 from .venue_catalogs import CatalogIndexer, CatalogStore, catalog_sources, probe_fetch
+from .web_search import FallbackWebSearch
 from .workflow import PaperSearchWorkflow
 
 FULL_MODE = 'full'
@@ -303,9 +304,15 @@ class ServiceContainer:
 
     @cached_property
     def web_search(self) -> Any:
-        """The first configured web search provider whose key is set; None when there is none."""
+        """The configured web search providers whose keys are set, in order; None when there is none.
+
+        With more than one, a query falls through to the next when a provider fails or runs out of credit.
+        """
         names = self.settings.discovery.web_search
-        return next(filter(None, (WEB_SEARCH.factory(name)(self) for name in names)), None)
+        providers = [provider for provider in (WEB_SEARCH.factory(name)(self) for name in names) if provider]
+        if len(providers) > 1:
+            return FallbackWebSearch(providers)
+        return providers[0] if providers else None
 
     @cached_property
     def resolver(self) -> ProfessorResolver:

@@ -250,7 +250,7 @@ sudo netfilter-persistent save
 - **异地备份必须配好**，并且不要放在 Oracle 账号里。服务器没了就新建一台，照上面的步骤部署，再按[备份和恢复](#备份和恢复)恢复。索引约 14 分钟重建完。
 - **额度用完后结果会变差。** Tavily 用完后，靠网页搜索找到的主页和全文会缺失（实测全文覆盖率 61.5% 对 56.4%）。OpenAlex 用完后，当天的请求会被拒绝，结果里会说明。
 
-要节省 Tavily 额度，调低 `PAPER_SEARCH__PDF__WEB_SEARCH_MAXIMUM_PAPERS`（默认 25）。
+要节省 Tavily 额度，调低 `PAPER_SEARCH__PDF__WEB_SEARCH_MAXIMUM_PAPERS`（默认 50）。
 
 ### 备份和恢复
 
@@ -334,5 +334,5 @@ python scripts/loadtest/run.py --workers 1 4 --searches 16
 | 数据源 | 额度 | 够不够 |
 |---|---|---|
 | OpenAlex | 每天 1 美元免费 | 约 80 篇论文的搜索每次约 0.012 美元，每天大约 80 次。超过后当天拒绝请求，结果会说明有来源没响应。需要更多时先充值，再调高 `MAXIMUM_DAILY_COST_USD` |
-| Tavily | 每月 1,000 credits 免费，超出按每个 0.008 美元计 | 每次搜索 3 个查询找主页，再为最多 25 篇找不到全文的论文各查一次，也就是 3–28 个 credits。免费额度够一个月 36–330 次，超出后每次搜索 0.024–0.22 美元。实测 Kevin Ellis 加上没跑完的 Manning 一共不到 16 个。要控制用量，调低 `PAPER_SEARCH__PDF__WEB_SEARCH_MAXIMUM_PAPERS` |
+| Tavily | 每月 1,000 credits 免费，超出按每个 0.008 美元计 | 每次搜索 3 个查询找主页，再为最多 50 篇找不到全文的论文各查一次，也就是 3–53 个 credits。基准测试的 32 位教授平均每人约 17 篇需要查，所以免费额度大约够一个月 50 次搜索；超出后每次搜索 0.024–0.42 美元。配置了多个搜索服务的密钥（`TAVILY_API_KEY`、`BRAVE_API_KEY`、`EXA_API_KEY`）时，一个额度用完会自动换下一个。实测 Kevin Ellis 加上没跑完的 Manning 一共不到 16 个。要控制用量，调低 `PAPER_SEARCH__PDF__WEB_SEARCH_MAXIMUM_PAPERS` |
 | Semantic Scholar | 带密钥时限速 1 次/秒 | 实测仍有不少 429，服务会退避重试，这是变慢的原因之一 |
