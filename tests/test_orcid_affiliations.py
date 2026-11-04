@@ -1,6 +1,6 @@
 import unittest
 
-from paper_author_searcher.models import CuratedPosition
+from paper_author_searcher.models import CareerPosition, CuratedPosition
 from paper_author_searcher.orcid_affiliations import OrcidAffiliations
 
 
@@ -22,6 +22,22 @@ def summary(key, organization, department=None, end=None):
 
 
 class OrcidAffiliationsTests(unittest.TestCase):
+    def test_career_keeps_each_positions_years(self):
+        dated = summary('employment-summary', 'Stanford University', end=2020)
+        dated['summaries'][0]['employment-summary']['start-date'] = {'year': {'value': '2016'}}
+        unreadable = summary('education-summary', 'Fudan University')
+        unreadable['summaries'][0]['education-summary']['start-date'] = {'year': {'value': 'n/a'}}
+        client = Client(
+            {'employments': {'affiliation-group': [dated]}, 'educations': {'affiliation-group': [unreadable]}}
+        )
+        self.assertEqual(
+            OrcidAffiliations(client).career('0000-0003-2217-6982'),
+            [
+                CareerPosition('Stanford University', 'orcid', 2016, 2020),
+                CareerPosition('Fudan University', 'orcid', None, None),
+            ],
+        )
+
     def test_positions_carry_unit_and_recency(self):
         client = Client(
             {
