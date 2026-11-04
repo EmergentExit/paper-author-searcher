@@ -47,6 +47,21 @@ class AuthorshipPlacesTests(unittest.TestCase):
         found = places.on_bylines(['10.1/x'], lambda name: name == 'Huan Zhang')
         self.assertEqual(found, {'10.1/x': {'Queen Mary'}})
 
+    def test_a_preprint_doi_finds_the_journal_version_it_is_filed_under(self):
+        work = {
+            'doi': 'https://doi.org/10.3390/electronics14112269',
+            'locations': [
+                {'landing_page_url': 'https://doi.org/10.3390/electronics14112269'},
+                {'landing_page_url': 'http://arxiv.org/abs/2503.06064v2', 'pdf_url': 'http://arxiv.org/pdf/2503.06064'},
+            ],
+            'authorships': [
+                {'author': {'display_name': 'Guancheng Chen'}, 'institutions': [{'display_name': 'PPSUC'}]}
+            ],
+        }
+        places = self.places({'works': {'results': [work]}})
+        found = places.on_bylines(['10.48550/arxiv.2503.06064'], lambda _: True)
+        self.assertEqual(found, {'10.48550/arxiv.2503.06064': {'PPSUC'}})
+
     def test_a_paper_with_no_printed_institution_is_absent(self):
         work = {'doi': 'https://doi.org/10.1/x', 'authorships': [{'author': {'display_name': 'H'}, 'institutions': []}]}
         self.assertEqual(self.places({'works': {'results': [work]}}).on_bylines(['10.1/x'], lambda _: True), {})
