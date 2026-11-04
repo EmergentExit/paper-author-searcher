@@ -91,6 +91,11 @@ class OwnershipConfig:
     # Anchor kinds that make an author ID's past institutions (the identity's affiliation history) acceptable as
     # paper-level evidence. Paper anchors are excluded: they can attach a namesake's fragment.
     history_anchor_kinds: tuple[str, ...] = ('orcid', 'profile')
+    # The person's career (career.CareerTimeline: their ORCID record, the schools the caller names) vouches for a
+    # byline at a past school when the paper's year is within the position's years, give or take this many.
+    career_year_tolerance: int = 1
+    # Where the career comes from, in order: 'stated' (the caller's previous schools), 'orcid' (the person's record).
+    career_sources: tuple[str, ...] = ('stated', 'orcid')
     # A work on the person's own list (homepage or supplied ORCID) with a compatible byline is theirs.
     verify_listed_works: bool = True
     # Sources whose author profiles are curated by people (DBLP disambiguates by hand), so an author ID there that

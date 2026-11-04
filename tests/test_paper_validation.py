@@ -7,6 +7,7 @@ from paper_author_searcher.config import OwnershipConfig
 from paper_author_searcher.listed_works import RETRIEVED_EVIDENCE
 from paper_author_searcher.models import (
     AnchorEvidence,
+    CareerPosition,
     PaperCollectionResult,
     PaperRecord,
     PaperSourceResult,
@@ -242,7 +243,14 @@ class NamesakeGroupTests(unittest.TestCase):
         statuses = self.unanchored(places, extra=[first, second])
         self.assertEqual((statuses['Depth one'], statuses['Depth two']), (OwnershipStatus.NEEDS_REVIEW,) * 2)
 
-    def unanchored(self, places, main_venue='PACT', other_venue='J. King Saud Univ. Comput. Inf. Sci.', extra=()):
+    def test_a_group_at_a_school_of_the_career_is_not_held(self):
+        places = Places(set(), {'10.1/m1': {'IBM Research - China'}, '10.1/x1': {'University of Toronto'}})
+        statuses = self.unanchored(places, career=[CareerPosition('IBM Research - China', 'stated')])
+        self.assertEqual(statuses['Main one'], OwnershipStatus.VERIFIED)
+
+    def unanchored(
+        self, places, main_venue='PACT', other_venue='J. King Saud Univ. Comput. Inf. Sci.', extra=(), career=()
+    ):
         main = [
             self.paper('Main one', ('Jane Smith', 'Li Wei'), doi='10.1/m1'),
             self.paper('Main two', ('Jane Smith', 'Omar Hadi'), doi='10.1/m2'),
@@ -261,6 +269,7 @@ class NamesakeGroupTests(unittest.TestCase):
             profile(),
             orcid=None,
             requested_university='University of Toronto',
+            career=list(career),
             author_ids={'dblp': '123/4433-1', 'openalex': 'A1'},
             author_id_aliases={'dblp': ['123/4433-1'], 'openalex': ['A1']},
             curated_author_ids={'dblp': ['123/4433-1']},
@@ -483,6 +492,25 @@ class OwnershipTests(unittest.TestCase):
             self.assertTrue(abbreviated(name), name)
         for name in ('Guancheng Chen', 'Chen, Guancheng', 'Yi Cui', 'LI Wei', 'Chen'):
             self.assertFalse(abbreviated(name), name)
+
+    def test_a_byline_at_a_past_school_counts_when_the_career_puts_the_person_there_that_year(self):
+        def run(*career):
+            target = replace(profile(), orcid=None, matched_affiliations=['Example University'], career=list(career))
+            papers = deduplicate_papers([record()])  # a 2024 paper
+            papers[0].records[0].author_details[0]['institutions'] = [{'display_name': 'Old University'}]
+            PaperOwnershipValidator().validate(papers, target)
+            return papers[0]
+
+        self.assertEqual(run().ownership_status, 'needs_review')
+        verified = run(CareerPosition('Old University', 'orcid', 2018, 2023))
+        self.assertEqual(verified.ownership_status, 'verified')
+        self.assertTrue(any('career: orcid 2018-2023' in line for line in verified.ownership_evidence))
+        self.assertEqual(run(CareerPosition('Old University', 'orcid', 2015, 2022)).ownership_status, 'needs_review')
+        self.assertEqual(run(CareerPosition('Other University', 'orcid', 2018, 2025)).ownership_status, 'needs_review')
+        self.assertEqual(run(CareerPosition('Old University', 'stated')).ownership_status, 'verified')
+        # A checkpoint stores the career as plain dicts.
+        stored = {'institution': 'Old University', 'source': 'stated', 'start_year': None, 'end_year': None}
+        self.assertEqual(run(stored).ownership_status, 'verified')
 
     def test_past_institution_counts_only_for_an_orcid_anchored_author(self):
         def run(kind, config=None):

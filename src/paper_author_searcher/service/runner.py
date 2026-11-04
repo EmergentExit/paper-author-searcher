@@ -51,6 +51,7 @@ def query_from_request(request: dict[str, Any]) -> ProfessorQuery:
         scholar_url=hints.get('scholar_url'),
         profile_urls=list(hints.get('profile_urls') or []),
         publication_pages=list(hints.get('publication_pages') or []),
+        previous_universities=list(hints.get('previous_universities') or []),
     )
 
 

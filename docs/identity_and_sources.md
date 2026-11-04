@@ -10,6 +10,7 @@
 | `department`、`research_interests`、`university_aliases` | 否 | 院系、研究方向、学校别名 |
 | `homepage`、`publication_pages` | 否 | 主页、实验室页、CV PDF；页面上的发表条目成为锚点和本人发表列表 |
 | `orcid` | 否 | ORCID 记录的作品列表成为本人发表列表 |
+| `previous_universities` | 否 | 以前读书或任职的学校（读博、博后、上一份工作）；署名为这些学校的论文按履历确认，见下文「履历」 |
 | `email` | 否 | 先按邮箱查 ORCID 注册表；邮箱域名证明页面属于该机构 |
 | `scholar_url`、`profile_urls` | 否 | Google Scholar、ORCID、OpenAlex、Semantic Scholar、DBLP、OpenReview 档案链接 |
 
@@ -113,3 +114,15 @@ export PAPER_SEARCH__CATALOGS__STORE_PATH=output/catalogs/catalogs.sqlite
 ## 收集阶段的拆分档案合并（已移除）
 
 曾有一个收集阶段的合并步骤：按合作者网络与机构，把同名的其他作者 ID 并入本人身份。评测中它对 28 人提出了 268 个片段，一个都没有接受；对最少输入下 158 篇未找到的真值论文逐篇核对，只有 1 篇位于被提出的片段之下，即这一步最多只能多找到 1 篇。因此已删除，不再为它翻页消耗 API 配额。解析阶段同来源的拆分档案合并（`MatchingConfig.merge_split_profiles`，见 [identity_resolution.md](identity_resolution.md)）不受影响。
+
+## 履历
+
+研究者会换学校：在一所学校读博，在另一所做博后，再到第三所任教。论文署的是当时的学校，所以读博时期的论文印着一所搜索没问到的学校。归属检查（`paper_ownership`）在履历显示此人当年在那所学校时，接受这样的署名（论文年份在任职年份前后 `ownership.career_year_tolerance` 年以内，默认 1）。
+
+履历只来自可靠来源（`career.py`，按 `ownership.career_sources` 的顺序）：
+- `stated`：调用方填写的以前的学校（`hints.previous_universities`），不带年份，任何年份都算；
+- `orcid`：此人 ORCID 记录的任职和学历，带起止年份。只有当这份记录确属本人时才读：它是身份锚点，或者记录本身写着搜索的学校。数据库挂在作者档案上的 ORCID 可能属于被合并进来的同名者，所以不能直接信。
+
+作者数据库（OpenAlex 等）的机构历史不进入履历：它们会把同名的人合并在一起。没有任何来源时履历为空，所有归属规则保持不变。
+
+其他条件不放宽：论文仍要挂在此人选定的作者 ID 下、署名与姓名兼容，常见名的院系防护照常生效。履历上的学校还让论文组免于「同名者论文组」和「无法定位的论文组」两条暂缓规则。

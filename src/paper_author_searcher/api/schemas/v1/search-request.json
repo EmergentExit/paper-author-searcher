@@ -44,7 +44,11 @@
         "publication_pages": {"$ref": "#/$defs/url_list"},
         "known_papers": {"$ref": "#/$defs/text_list"},
         "research_interests": {"$ref": "#/$defs/text_list"},
-        "university_aliases": {"$ref": "#/$defs/text_list"}
+        "university_aliases": {"$ref": "#/$defs/text_list"},
+        "previous_universities": {
+          "description": "Schools the researcher studied or worked at before (PhD, postdoc, an earlier post). Papers whose byline names one of them count as the researcher's, given the usual author-ID and byline checks.",
+          "$ref": "#/$defs/text_list"
+        }
       }
     },
     "limits": {

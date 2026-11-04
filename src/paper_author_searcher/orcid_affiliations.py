@@ -8,9 +8,10 @@ from datetime import date
 from typing import Any
 
 from .config import DEFAULT_SOURCES, SourceConfig
-from .models import CuratedPosition
+from .models import CareerPosition, CuratedPosition
 
 ORCID_JSON = {'Accept': 'application/json'}
+ORCID_SOURCE = 'orcid'
 
 
 class OrcidAffiliations:
@@ -41,6 +42,22 @@ class OrcidAffiliations:
         end = ((summary.get('end-date') or {}).get('year') or {}).get('value')
         return not end or int(end) >= self.current_year
 
+    def career(self, orcid: str) -> list[CareerPosition]:
+        """Every employment and education the record states, with its start and end years when given."""
+        found = []
+        for summary in self.summaries(orcid):
+            organization = (summary.get('organization') or {}).get('name')
+            if organization:
+                found.append(
+                    CareerPosition(
+                        organization,
+                        ORCID_SOURCE,
+                        _year(summary.get('start-date')),
+                        _year(summary.get('end-date')),
+                    )
+                )
+        return found
+
     def positions(self, orcid: str) -> list[CuratedPosition]:
         positions = []
         for summary in self.summaries(orcid):
@@ -57,3 +74,12 @@ class OrcidAffiliations:
                 )
             )
         return positions
+
+
+def _year(date_value: Any) -> int | None:
+    """The year of an ORCID fuzzy date ({"year": {"value": "2015"}, ...}); None when absent or unreadable."""
+    value = ((date_value or {}).get('year') or {}).get('value')
+    try:
+        return int(value) if value else None
+    except (TypeError, ValueError):
+        return None

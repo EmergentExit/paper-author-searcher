@@ -7,7 +7,7 @@ from collections import Counter
 from .config import DEFAULT_OWNERSHIP
 from .listed_works import RETRIEVED_EVIDENCE
 from .matching import canonical_orcid, institution_similarity, name_similarity, normalize
-from .models import AnchorEvidence
+from .models import AnchorEvidence, CareerPosition
 from .paper_authorship import byline_forms, canonical_author_id, signature_names
 from .paper_deduplication import author_signatures_match, duplicate_evidence
 from .precision_guards import DepartmentMatcher, GuardContext, PrecisionGuard, target_affiliations
@@ -69,6 +69,12 @@ def _initials_only(given):
         len(part) == 1 or (part.isupper() and len(part) <= MAXIMUM_JOINED_INITIALS and not set(part) & set('AEIOUY'))
         for part in parts
     )
+
+
+def describe_position(position):
+    """How ownership evidence names a career position: 'career: orcid 2016-2020', 'career: stated'."""
+    years = '-'.join('' if year is None else str(year) for year in (position.start_year, position.end_year))
+    return f'career: {position.source}' + (f' {years}' if years != '-' else '')
 
 
 def record_fields(record):
@@ -249,7 +255,26 @@ class PaperOwnershipValidator:
                     for expected in profile.affiliations
                 ):
                     return observed + ' (past affiliation of an ORCID-anchored author ID)'
+                position = self._career_position(observed, profile, record.year)
+                if position is not None:
+                    return f'{observed} ({describe_position(position)})'
         return None
+
+    def _career_position(self, place, profile, year=None, any_year=False):
+        """The career position (career.CareerTimeline) at ``place`` that covers ``year``, give or take
+        ``career_year_tolerance``; with ``any_year`` the years are not compared."""
+        for item in profile.career:
+            position = CareerPosition.coerce(item)
+            in_time = any_year or position.during(year, self.config.career_year_tolerance)
+            if in_time and institution_similarity(place, position.institution) >= self.config.institution_similarity:
+                return position
+        return None
+
+    def _on_career(self, bylines, profile):
+        """Whether any printed place of a group is a school of the person's career."""
+        return any(
+            self._career_position(place, profile, any_year=True) is not None for places in bylines for place in places
+        )
 
     def _abbreviated_in_other_unit(self, record, author, profile):
         """An initials-only byline ("G Chen") whose printed unit is not the requested department.
@@ -498,8 +523,12 @@ class PaperOwnershipValidator:
         school_venues = set().union(
             *(self._group_venues(group) for group, is_placed in zip(groups, placed, strict=True) if is_placed)
         )
+        # A group printing a school of the person's career (their ORCID record, a school the caller named) is theirs.
         unlinked = [
-            not is_placed and bool(places) and not self._group_venues(group) & school_venues
+            not is_placed
+            and bool(places)
+            and not self._group_venues(group) & school_venues
+            and not self._on_career(places, profile)
             for group, places, is_placed in zip(groups, seen, placed, strict=True)
         ]
         # A single paper is its own group whenever it has no coauthor, as an economist's solo papers do. A small group
@@ -571,7 +600,7 @@ class PaperOwnershipValidator:
         on_byline = self.places.on_bylines(dois, lambda name: self._names_target(name, profile))
         for group in suspects:
             seen = [on_byline[paper.doi.lower()] for paper in group if paper.doi and paper.doi.lower() in on_byline]
-            if not seen or any(places & known for places in seen):
+            if not seen or any(places & known for places in seen) or self._on_career(seen, profile):
                 continue
             for paper in group:
                 if not self._only_unproven_sources(paper):
