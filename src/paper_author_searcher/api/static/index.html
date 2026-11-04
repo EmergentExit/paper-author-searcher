@@ -247,7 +247,8 @@
     const noticeText = {web_search_off: '未启用网页搜索（没有配置搜索密钥），只存放在作者主页或其他网站上的 PDF 找不到，全文覆盖率会降低。'};
     $('notices').textContent = (result.notices || []).map((notice) => noticeText[notice.code] || notice.message).join(' ');
     $('stats').innerHTML = '';
-    for (const [label, value] of [['篇论文', stats.papers], ['篇有 PDF', stats.full_text_files], ['篇只有在线链接', stats.full_text_links]]) {
+    const browserOnly = result.papers.filter((paper) => paper.full_text.status === 'none' && paper.full_text.browser_url).length;
+    for (const [label, value] of [['篇论文', stats.papers], ['篇有 PDF', stats.full_text_files], ['篇只有在线链接', stats.full_text_links], ['篇需在浏览器打开', browserOnly]]) {
       const cell = document.createElement('div');
       cell.innerHTML = '<b></b><span class="muted"></span>';
       cell.querySelector('b').textContent = value;
@@ -282,6 +283,11 @@
       } else if (full.status === 'link') {
         const link = document.createElement('a');
         link.href = full.url; link.target = '_blank'; link.rel = 'noopener'; link.textContent = '打开链接';
+        text.append(link);
+      } else if (full.browser_url) {
+        const link = document.createElement('a');
+        link.href = full.browser_url; link.target = '_blank'; link.rel = 'noopener'; link.textContent = '去网站打开';
+        link.title = '这个链接确认是这篇论文，但网站不让程序下载（机器人验证）。在你的浏览器里打开通常可以免费下载。';
         text.append(link);
       } else {
         text.innerHTML = '<span class="chip">无公开原文</span>';
