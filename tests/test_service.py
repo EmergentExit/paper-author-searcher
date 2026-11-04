@@ -1,6 +1,7 @@
 """The search service core: repository, worker, facade, results, file stores, S3 signing, metrics, index refresh."""
 
 import json
+import math
 import os
 import sqlite3
 import tempfile
@@ -16,6 +17,7 @@ from unittest import mock
 from paper_author_searcher.api.schema import validator
 from paper_author_searcher.config import ServiceConfig
 from paper_author_searcher.http import SourceError
+from paper_author_searcher.http_deadline import SearchDeadline, TimeLimitReached
 from paper_author_searcher.service.facade import SearchService
 from paper_author_searcher.service.files import LocalFileStore, S3FileStore
 from paper_author_searcher.service.indexes import IndexRefresher
@@ -65,7 +67,8 @@ class FakeRunner:
         self.outcomes = list(outcomes)
         self.calls = []
 
-    def run(self, job, checkpoint, progress):
+    def run(self, job, checkpoint, progress, stop=None):
+        self.stop = stop
         self.calls.append((job, checkpoint.read_text() if checkpoint else None))
         progress('Collecting papers', 1, 2)
         outcome = self.outcomes.pop(0)
@@ -286,6 +289,65 @@ class WorkerTests(unittest.TestCase):
         thread.join(5)
         self.assertEqual(core.repository.get('srch_1').status, JobStatus.SUCCEEDED)
         self.assertEqual(core.repository.workers(), [])
+
+
+class CancelTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.core = Core(self.directory.name, [])
+        self.core.worker.cancel_poll_seconds = 0.01
+
+    def test_a_queued_search_is_stopped_before_any_worker_takes_it(self):
+        self.core.repository.create(Job('srch_1', 'k', REQUEST))
+        stopped = self.core.service.cancel('k', 'srch_1')
+        self.assertEqual((stopped.status, stopped.error['code']), ('cancelled', 'cancelled'))
+        self.assertIsNotNone(stopped.finished_at)
+        self.assertFalse(self.core.worker.run_once())
+
+    def test_a_running_search_ends_and_keeps_nothing_it_found(self):
+        pdf = self.core.pdf('a.pdf')
+
+        def stopped_midway(job):
+            self.core.service.cancel('k', job.id)
+            # The worker's beat notices and sets stop, which the run's deadline obeys.
+            self.assertTrue(self.core.runner.stop.wait(5))
+            return SearchOutcome(JobStatus.SUCCEEDED, result=result_with_files('0'), files={'0': pdf})
+
+        self.core.runner.outcomes.append(stopped_midway)
+        self.core.repository.create(Job('srch_1', 'k', REQUEST))
+        self.core.worker.run_once()
+        job = self.core.repository.get('srch_1')
+        self.assertEqual((job.status, job.result), ('cancelled', None))
+        self.assertIsNone(self.core.files.locate(paper_key('srch_1', '0'), 'x'))
+
+    def test_a_search_waiting_for_a_candidate_can_be_stopped_and_not_confirmed_after(self):
+        self.core.repository.create(
+            Job('srch_1', 'k', REQUEST, status=JobStatus.NEEDS_CONFIRMATION, candidates=CANDIDATES)
+        )
+        self.assertEqual(self.core.service.cancel('k', 'srch_1').status, 'cancelled')
+        with self.assertRaises(ServiceError):
+            self.core.service.confirm('k', 'srch_1', 'openalex:A1')
+
+    def test_stopping_twice_is_harmless_but_a_finished_search_cannot_be_stopped(self):
+        self.core.repository.create(Job('srch_1', 'k', REQUEST))
+        self.core.service.cancel('k', 'srch_1')
+        self.assertEqual(self.core.service.cancel('k', 'srch_1').status, 'cancelled')
+        self.core.repository.create(Job('srch_2', 'k', REQUEST, status=JobStatus.SUCCEEDED))
+        with self.assertRaises(ServiceError) as raised:
+            self.core.service.cancel('k', 'srch_2')
+        self.assertEqual(raised.exception.code, 'already_finished')
+        with self.assertRaises(ServiceError):
+            self.core.service.cancel('someone else', 'srch_1')
+
+    def test_a_stop_expires_the_deadline_at_once(self):
+        stop = threading.Event()
+        deadline = SearchDeadline(math.inf, stop=stop)
+        self.assertFalse(deadline.expired())
+        stop.set()
+        self.assertTrue(deadline.expired())
+        with self.assertRaises(TimeLimitReached):
+            deadline.check()
 
 
 class FacadeTests(unittest.TestCase):

@@ -193,6 +193,23 @@ class RouteTests(unittest.TestCase):
         self.assertSchema('search', shown.body)
         self.assertEqual(api.core.runner.calls[0][0].request, REQUEST)
 
+    def test_a_search_can_be_stopped_once_and_a_finished_one_cannot(self):
+        api = self.harness()
+        api.core.service.on_submit = None  # stays queued: no inline worker
+        created = api.call('POST', '/v1/searches', REQUEST)
+        stop = created.body['links']['self'] + '/cancel'
+        self.assertEqual(api.call('POST', stop, secret=api.other).status, 404)
+        stopped = api.call('POST', stop)
+        self.assertEqual((stopped.status, stopped.body['status']), (200, 'cancelled'))
+        self.assertSchema('search', stopped.body)
+        agent = api.call('GET', created.body['links']['self'] + '/agent')
+        self.assertEqual((agent.body['status'], agent.body['usable']), ('cancelled', False))
+        self.assertSchema('agent-result', agent.body)
+        api.core.service.on_submit = api.core.worker.run_once
+        api.core.runner.outcomes.append(api.succeed())
+        done = api.call('POST', '/v1/searches', dict(REQUEST, name='Someone Else'))
+        self.assertEqual(api.call('POST', done.body['links']['self'] + '/cancel').status, 409)
+
     def test_other_callers_cannot_see_a_job(self):
         api = self.harness()
         api.core.runner.outcomes.append(api.succeed())
