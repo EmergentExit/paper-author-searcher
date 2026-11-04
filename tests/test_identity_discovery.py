@@ -480,10 +480,13 @@ class CompositionTests(unittest.TestCase):
         disabled = replace(Settings(), discovery=DiscoveryConfig(enabled=False))
         self.assertEqual(ServiceContainer(disabled).discovery.steps, [])
 
-    def test_web_search_uses_the_first_provider_with_a_key(self):
+    def test_web_search_chains_the_providers_with_a_key_in_order(self):
         keys = Credentials(tavily_api_key='t', exa_api_key='e')
         preferred = replace(Settings(), credentials=keys, discovery=DiscoveryConfig(web_search=('exa', 'tavily')))
-        self.assertIsInstance(ServiceContainer(preferred).web_search, ExaSearch)
+        chain = ServiceContainer(preferred).web_search
+        self.assertEqual([type(provider) for provider in chain.providers], [ExaSearch, TavilySearch])
+        only = replace(preferred, credentials=Credentials(exa_api_key='e'))
+        self.assertIsInstance(ServiceContainer(only).web_search, ExaSearch)
         self.assertIsNone(ServiceContainer(replace(preferred, credentials=Credentials())).web_search)
         off = replace(preferred, discovery=DiscoveryConfig(web_search=()))
         self.assertIsNone(ServiceContainer(off).web_search)

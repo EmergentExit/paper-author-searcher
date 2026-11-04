@@ -5,9 +5,17 @@ Each adapter maps its provider's response to ``SearchHit``; which one runs is co
 not built at all, so discovery simply skips the web step.
 """
 
+import logging
+import threading
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
+
+logger = logging.getLogger(__name__)
+
+# A provider answering one of these is out of credit or refuses the key, so it is skipped for the rest of the run
+# (Tavily: 432 plan limit, 433 pay-as-you-go limit; Brave and Exa: 402). A rate limit (429) skips only that query.
+EXHAUSTED_STATUSES = frozenset({401, 402, 403, 432, 433})
 
 
 @dataclass(frozen=True)
@@ -69,3 +77,38 @@ class ExaSearch:
         payload = {'query': query, 'numResults': count}
         data = self.client.post_json(self.url, payload, headers={'x-api-key': self.api_key})
         return _hits((data or {}).get('results') or [], 'text')
+
+
+class FallbackWebSearch:
+    """Several providers in order: a query goes to the next one when a provider fails or runs out of credit."""
+
+    def __init__(self, providers: Iterable[WebSearch]) -> None:
+        self.providers = list(providers)
+        if not self.providers:
+            raise ValueError('FallbackWebSearch needs at least one provider')
+        self.exhausted: set[str] = set()
+        self._lock = threading.Lock()
+
+    @property
+    def name(self) -> str:
+        live = [provider.name for provider in self.providers if provider.name not in self.exhausted]
+        return (live or [self.providers[-1].name])[0]
+
+    def search(self, query: str, count: int) -> list[SearchHit]:
+        error: Exception | None = None
+        for provider in self.providers:
+            if provider.name in self.exhausted:
+                continue
+            try:
+                return provider.search(query, count)
+            except Exception as exc:
+                error = exc
+                if getattr(exc, 'status_code', None) in EXHAUSTED_STATUSES:
+                    with self._lock:
+                        self.exhausted.add(provider.name)
+                    logger.warning(
+                        'Web search %s is out of credit or refused the key; trying the next one', provider.name
+                    )
+        if error is None:
+            raise RuntimeError('every web search provider is out of credit')
+        raise error

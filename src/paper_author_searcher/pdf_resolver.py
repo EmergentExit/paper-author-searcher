@@ -287,10 +287,11 @@ class PDFResolver:
         result.candidate_decisions = [d for d in result.candidate_decisions if d.get('url') != url]
 
     def _ask_fallbacks(self, jobs):
-        """Ask each fallback once per work still without a PDF, newest first, up to the configured number of works.
+        """Ask each fallback once per work still without a PDF, up to the configured number of works.
 
         Entries sharing a title are editions of one work, so the answer serves them all, and a work with a PDF under
-        any of them is not asked about.
+        any of them is not asked about. Works with no copy tied to them come first, newest first: a work whose own
+        copy the site refused to the program still has a link a person can open in a browser.
         """
         if not self.fallbacks:
             return
@@ -304,10 +305,22 @@ class PDFResolver:
             title = normalize_title(paper.get('title') or '')
             if title and title not in covered and result.ownership_status == OwnershipStatus.VERIFIED:
                 works.setdefault(title, []).append((paper, result))
-        newest = sorted(works.values(), key=lambda work: max(paper.get('year') or 0 for paper, _ in work), reverse=True)
-        selected = [(work,) for work in newest[: self.config.web_search_maximum_papers]]
+        ordered = sorted(
+            works.values(),
+            key=lambda work: (not self._has_tied_copy(work), max(paper.get('year') or 0 for paper, _ in work)),
+            reverse=True,
+        )
+        selected = [(work,) for work in ordered[: self.config.web_search_maximum_papers]]
         for _ in self._run_lookups(selected, self._ask_about_work):
             pass
+
+    @staticmethod
+    def _has_tied_copy(work):
+        return any(
+            candidate.identity_status == IdentityStatus.VERIFIED
+            for _, result in work
+            for candidate in result.pdf_candidates
+        )
 
     def _ask_about_work(self, work):
         for provider in self.fallbacks:
