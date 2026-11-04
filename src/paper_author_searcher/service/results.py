@@ -226,8 +226,21 @@ class ResultView:
                 'url': url,
                 'version': (file.get('version_type') if checked else link.get('version_type')) if url else None,
                 'download': self.download_link(paper_id) if checked else None,
+                'browser_url': None if url else self._browser_url(link),
             },
         }
+
+    @staticmethod
+    def _browser_url(link: dict[str, Any]) -> str | None:
+        """A copy that metadata ties to this paper but that the site would not hand to a program.
+
+        Publishers such as ACM, ACS and Wiley answer scripts with a bot check or an HTML page, even for open-access
+        papers. A person can usually open the same link in a browser, so the page offers it to them instead.
+        """
+        for candidate in link.get('pdf_candidates') or []:
+            if candidate.get('identity_status') == IdentityStatus.VERIFIED and candidate.get('url'):
+                return str(candidate['url'])
+        return None
 
     def _ownership(self, entry: dict[str, Any]) -> tuple[str, list[str]]:
         """How sure the paper is the person's ('high', 'medium', 'low') and the findings that say so."""
