@@ -24,7 +24,7 @@ from typing import Any
 from .config import DEFAULT_MATCHING, DEFAULT_NAME_SEARCHES, ListedWorksConfig, MatchingConfig, NameSearchConfig
 from .listed_works import AuthorMatcher, crossref_item_record, relabel_choice, same_title, split_key
 from .logging_config import log_isolated_failure
-from .matching import DOI_URL, canonical_doi, institution_mentioned, normalize, split_name
+from .matching import DOI_URL, canonical_doi, institution_mentioned, institution_similarity, normalize, split_name
 from .models import PaperRecord, PaperSourceResult, ProfessorProfile
 from .paper_providers import parse_year
 
@@ -325,3 +325,144 @@ def core_record(work: dict, choose: Callable[[list[dict[str, Any]]], str | None]
         author_details=details,
         target_author_present=True,
     )
+
+
+class OpenAlexSiblingSearch(PagedNameSearch):
+    """Works of the person's other OpenAlex author records at the requested school.
+
+    OpenAlex often splits one researcher into several author records, and the identity step keeps only those its
+    search returned. This asks OpenAlex for every author of the person's name affiliated with an institution of the
+    resolved records that matches the requested school, and collects the works of those not already selected.
+
+    A namesake at the same school comes back too, so the records carry no author ID of the person: the chosen
+    authorship is relabelled with the name-search key, and ownership verifies a work only through recurring
+    independently verified coauthors (or the person's own list), as for every name search.
+    """
+
+    name = 'openalex_siblings'
+    evidence = 'Found under another OpenAlex author record of the same name at the requested school; no author ID'
+
+    def __init__(
+        self,
+        papers: Any,
+        config: NameSearchConfig = DEFAULT_NAME_SEARCHES,
+        matching: MatchingConfig = DEFAULT_MATCHING,
+        current_year: int | None = None,
+    ) -> None:
+        super().__init__(matching)
+        self.papers, self.config = papers, config
+        self.page_size, self.maximum_results = config.page_size, config.maximum_results
+        self.years = year_range(config.recent_years, current_year or date.today().year)
+        self._siblings: dict[str, list[str]] = {}
+
+    @property
+    def provider(self) -> Any:
+        return self.papers.provider
+
+    def first_cursor(self) -> str:
+        return '*'
+
+    def collect(self, profile: ProfessorProfile) -> PaperSourceResult:
+        if not self.siblings(profile):
+            result = PaperSourceResult(source=self.name, author_id=self.author_key(profile))
+            result.pagination_complete = result.complete = True
+            return result
+        return super().collect(profile)
+
+    def siblings(self, profile: ProfessorProfile) -> list[str]:
+        """OpenAlex author IDs of the person's name at the matching institutions, minus the selected ones."""
+        key = self.author_key(profile)
+        if key not in self._siblings:
+            self._siblings[key] = self._find_siblings(profile)
+        return self._siblings[key]
+
+    def _find_siblings(self, profile: ProfessorProfile) -> list[str]:
+        selected = [short_id(value) for value in profile.author_id_aliases.get('openalex') or []]
+        selected = [value for value in selected if value][: self.config.openalex_sibling_selected_records]
+        institutions = self._institutions(profile, selected)
+        if not institutions:
+            return []
+        data = self.provider.client.get(
+            self.provider.base_url + '/authors',
+            {
+                'search': profile.requested_name or profile.name,
+                'filter': 'affiliations.institution.id:' + '|'.join(institutions),
+                'per-page': self.config.openalex_sibling_candidates,
+                'select': 'id,display_name,display_name_alternatives',
+                'api_key': self.provider.api_key,
+            },
+        )
+        found = []
+        for item in (data or {}).get('results') or []:
+            author_id = short_id(item.get('id'))
+            names = [item.get('display_name') or '', *(item.get('display_name_alternatives') or [])]
+            if author_id and author_id not in selected and self.authors.compatible(profile, names):
+                found.append(author_id)
+        return found[: self.config.openalex_sibling_records]
+
+    def _institutions(self, profile: ProfessorProfile, selected: list[str]) -> list[str]:
+        schools = [
+            school
+            for school in (profile.requested_university, *profile.matched_affiliations)
+            if isinstance(school, str) and school
+        ]
+        if not schools or not selected:
+            return []
+        data = self.provider.client.get(
+            self.provider.base_url + '/authors',
+            {
+                'filter': 'ids.openalex:' + '|'.join(selected),
+                'select': 'id,affiliations,last_known_institutions',
+                'api_key': self.provider.api_key,
+            },
+        )
+        found: dict[str, None] = {}
+        for author in (data or {}).get('results') or []:
+            places = [entry.get('institution') or {} for entry in author.get('affiliations') or []]
+            places.extend(author.get('last_known_institutions') or [])
+            for place in places:
+                name, identifier = place.get('display_name') or '', short_id(place.get('id'))
+                if identifier and any(
+                    institution_similarity(school, name, self.matching) >= self.matching.matched_school
+                    for school in schools
+                ):
+                    found[identifier] = None
+        return list(found)
+
+    def page(self, profile: ProfessorProfile, cursor: Any, size: int) -> Page:
+        provider = self.provider
+        data = provider.client.get(
+            provider.base_url + '/works',
+            {
+                'filter': f'authorships.author.id:{"|".join(self.siblings(profile))},'
+                f'from_publication_date:{self.years[0]}-01-01',
+                'cursor': cursor,
+                'per-page': size,
+                'select': self.papers.FIELDS,
+                'api_key': provider.api_key,
+            },
+        )
+        items = (data or {}).get('results') or []
+        following = ((data or {}).get('meta') or {}).get('next_cursor')
+        return Page(items, following if items and following and following != cursor else None)
+
+    def record(self, item: Any, profile: ProfessorProfile, key: str) -> PaperRecord | None:
+        siblings = set(self.siblings(profile))
+        chosen = [
+            short_id((authorship.get('author') or {}).get('id'))
+            for authorship in item.get('authorships') or []
+            if short_id((authorship.get('author') or {}).get('id')) in siblings
+        ]
+        if len(chosen) != 1:
+            return None
+        record = self.papers.parse_work(item, 'https://openalex.org/' + chosen[0])
+        for detail in record.author_details:
+            if short_id(detail.get('author_id')) == chosen[0]:
+                detail['author_id'] = key
+        record.source, record.source_author_id, record.target_author_present = self.name, key, True
+        return record
+
+
+def short_id(value: Any) -> str:
+    """An OpenAlex ID without its URL prefix ('https://openalex.org/A123' -> 'A123')."""
+    return str(value or '').rstrip('/').rsplit('/', 1)[-1]

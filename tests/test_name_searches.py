@@ -13,8 +13,10 @@ from paper_author_searcher.name_searches import (
     CrossrefAuthorSearch,
     EuropePmcAuthorSearch,
     EuropePmcWorkLookup,
+    OpenAlexSiblingSearch,
     initials,
 )
+from paper_author_searcher.paper_providers import OpenAlexPaperProvider
 from paper_author_searcher.settings import Credentials, Settings
 
 ORCID = '0000-0002-1825-0097'
@@ -212,10 +214,94 @@ class MatchingTests(unittest.TestCase):
         self.assertFalse(institution_mentioned('University of the', 'anything'))
 
 
+class OpenAlexClient:
+    """Answers the three OpenAlex calls of a sibling search from canned data, recording each filter."""
+
+    def __init__(self, authors, siblings, works):
+        self.authors, self.siblings, self.works, self.calls = authors, siblings, works, []
+
+    def get(self, url, params=None, headers=None, xml=False):
+        self.calls.append((url.rsplit('/', 1)[-1], (params or {}).get('filter')))
+        if url.endswith('/authors') and 'ids.openalex' in params['filter']:
+            return {'results': self.authors}
+        if url.endswith('/authors'):
+            return {'results': self.siblings}
+        return {'results': self.works, 'meta': {'next_cursor': None}}
+
+
+def authorship(author_id, name):
+    return {'author': {'id': 'https://openalex.org/' + author_id, 'display_name': name}, 'raw_author_name': name}
+
+
+class OpenAlexSiblingSearchTests(unittest.TestCase):
+    def search(self, client):
+        provider = OpenAlexPaperProvider(
+            type('Identity', (), {'client': client, 'base_url': 'https://api.openalex.org', 'api_key': None})()
+        )
+        return OpenAlexSiblingSearch(provider, current_year=2025)
+
+    def person(self):
+        return replace(profile(), author_id_aliases={'openalex': ['A1']})
+
+    def test_works_of_other_records_at_the_school_come_back_relabelled_for_coauthor_checks(self):
+        school = {'id': 'https://openalex.org/I9', 'display_name': 'Example University'}
+        elsewhere = {'id': 'https://openalex.org/I8', 'display_name': 'Other College'}
+        client = OpenAlexClient(
+            authors=[
+                {'id': 'https://openalex.org/A1', 'affiliations': [{'institution': school}, {'institution': elsewhere}]}
+            ],
+            siblings=[
+                {'id': 'https://openalex.org/A1', 'display_name': 'Mei Lin'},
+                {'id': 'https://openalex.org/A2', 'display_name': 'Mei Lin'},
+                {'id': 'https://openalex.org/A3', 'display_name': 'Rui Chen'},
+            ],
+            works=[
+                {
+                    'id': 'https://openalex.org/W1',
+                    'title': 'Split work',
+                    'authorships': [authorship('A2', 'Mei Lin'), authorship('A7', 'Ana Ruiz')],
+                },
+                {'id': 'https://openalex.org/W2', 'title': 'Not theirs', 'authorships': [authorship('A7', 'Ana Ruiz')]},
+            ],
+        )
+        result = self.search(client).collect(self.person())
+        self.assertEqual(client.calls[1][1], 'affiliations.institution.id:I9')
+        self.assertEqual(client.calls[2][1], 'authorships.author.id:A2,from_publication_date:2020-01-01')
+        [record] = result.papers
+        key = 'name:mei lin'
+        self.assertEqual(
+            (record.title, record.source, record.source_author_id), ('Split work', 'openalex_siblings', key)
+        )
+        self.assertEqual([detail['author_id'] for detail in record.author_details], [key, 'https://openalex.org/A7'])
+        self.assertIn(OpenAlexSiblingSearch.evidence, record.attribution_evidence)
+        self.assertTrue(result.complete)
+
+    def test_no_matching_institution_means_no_search(self):
+        client = OpenAlexClient(
+            authors=[
+                {
+                    'id': 'https://openalex.org/A1',
+                    'affiliations': [{'institution': {'id': 'I8', 'display_name': 'Other College'}}],
+                }
+            ],
+            siblings=[],
+            works=[],
+        )
+        result = self.search(client).collect(self.person())
+        self.assertEqual((result.papers, result.complete, len(client.calls)), ([], True, 1))
+
+    def test_without_a_selected_openalex_record_nothing_is_asked(self):
+        client = OpenAlexClient([], [], [])
+        self.assertEqual(self.search(client).collect(profile()).papers, [])
+        self.assertEqual(client.calls, [])
+
+
 class CompositionTests(unittest.TestCase):
     def test_name_searches_and_keyed_lookups_follow_configuration(self):
         container = ServiceContainer(Settings(), RunOptions(mode='metadata'))
-        self.assertEqual([search.name for search in container.name_searches], ['arxiv', 'europepmc', 'crossref'])
+        self.assertEqual(
+            [search.name for search in container.name_searches], ['arxiv', 'europepmc', 'crossref', 'openalex_siblings']
+        )
         lookups = [lookup.name for lookup in container.listed_work_retriever.lookups]
         self.assertNotIn('core', lookups)
         self.assertIn('europepmc', lookups)
