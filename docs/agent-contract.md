@@ -29,7 +29,7 @@ GET /v1/searches/{id}/agent      Authorization: Bearer <key>
 | `title`、`year`、`venue`、`authors` | 标题、年份、期刊或会议、作者 |
 | `abstract` | 摘要；来源里没有时为 null |
 | `doi`、`url` | DOI 和 DOI 链接 |
-| `full_text` | `status` 为 `file` 时可用 `download` 下载已核对的 PDF；为 `link` 时 `url` 是验证过的开放获取链接；为 `none` 时没有原文 |
+| `full_text` | `status` 为 `file` 时可用 `download` 下载已核对的 PDF；为 `link` 时 `url` 是验证过的开放获取链接；为 `none` 时没有可下载的原文；这时如果有 `browser_url`，它是确认属于这篇论文、但网站不让程序下载的链接（机器人验证），人在浏览器里打开通常能下载 |
 | `confidence` | `high` 或 `medium`，含义见下 |
 | `evidence` | 支撑这个判断的发现，最多 3 条（`service.maximum_paper_evidence`） |
 

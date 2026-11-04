@@ -77,7 +77,11 @@
           "properties": {
             "status": {"enum": ["file", "link", "none"]},
             "url": {"type": ["string", "null"]},
-            "download": {"description": "API path of the checked PDF (status file).", "type": ["string", "null"]}
+            "download": {"description": "API path of the checked PDF (status file).", "type": ["string", "null"]},
+            "browser_url": {
+              "description": "Status none: a link tied to this paper that the site refused to a program; it usually opens in a browser.",
+              "type": ["string", "null"]
+            }
           }
         },
         "confidence": {

@@ -116,7 +116,11 @@
         },
         "url": {"type": ["string", "null"]},
         "version": {"type": ["string", "null"]},
-        "download": {"type": ["string", "null"]}
+        "download": {"type": ["string", "null"]},
+        "browser_url": {
+          "description": "With status none: a link that metadata ties to this paper but that the site refused to a program (a bot check or an HTML page). It usually opens in a browser.",
+          "type": ["string", "null"]
+        }
       }
     },
     "result": {
