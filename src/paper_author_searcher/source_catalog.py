@@ -22,6 +22,7 @@ from .name_searches import (
     CrossrefAuthorSearch,
     EuropePmcAuthorSearch,
     EuropePmcWorkLookup,
+    OpenAlexSiblingSearch,
 )
 from .paper_collector import NameSearch
 from .paper_providers import DBLPPaperProvider, OpenAlexPaperProvider, PaperProvider, SemanticScholarPaperProvider
@@ -300,6 +301,15 @@ def _dblp_lookup(container: Any) -> DblpWorkLookup | None:
 def _catalog_lookup(container: Any) -> CatalogWorkLookup | None:
     store = container.catalog_store
     return CatalogWorkLookup(store, AuthorMatcher(container.settings.matching)) if store is not None else None
+
+
+@NAME_SEARCHES.register('openalex_siblings')
+def _openalex_sibling_search(container: Any) -> OpenAlexSiblingSearch | None:
+    papers = next((item for item in container.paper_providers if isinstance(item, OpenAlexPaperProvider)), None)
+    if papers is None:
+        return None
+    settings = container.settings
+    return OpenAlexSiblingSearch(papers, settings.name_searches, settings.matching)
 
 
 @NAME_SEARCHES.register('repositories')

@@ -82,7 +82,7 @@ class NameSearchConfig:
     names the one author whose name is the person's (and whose ORCID, when printed, is theirs), and ownership
     verifies it like any other record."""
 
-    sources: tuple[str, ...] = ('arxiv', 'europepmc', 'crossref', 'repositories')
+    sources: tuple[str, ...] = ('arxiv', 'europepmc', 'crossref', 'openalex_siblings', 'repositories')
     # Publication years searched, counting back from the current one.
     recent_years: int = 6
     page_size: int = 100
@@ -92,9 +92,25 @@ class NameSearchConfig:
     # Crossref ranks by relevance and does not filter by affiliation: keep only works where the person's own
     # byline entry prints the requested institution.
     crossref_require_affiliation: bool = True
+    # openalex_siblings: the person's other OpenAlex author records at the requested school. Institutions come from
+    # up to this many selected records; up to this many same-name authors are read and this many collected.
+    openalex_sibling_selected_records: int = 5
+    openalex_sibling_candidates: int = 50
+    openalex_sibling_records: int = 20
 
     def __post_init__(self) -> None:
-        if min(self.recent_years, self.page_size, self.europepmc_page_size, self.maximum_results) < 1:
+        if (
+            min(
+                self.recent_years,
+                self.page_size,
+                self.europepmc_page_size,
+                self.maximum_results,
+                self.openalex_sibling_selected_records,
+                self.openalex_sibling_candidates,
+                self.openalex_sibling_records,
+            )
+            < 1
+        ):
             raise ValueError('Name search limits must be positive')
 
 
