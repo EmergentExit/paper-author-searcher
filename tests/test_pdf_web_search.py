@@ -12,7 +12,7 @@ from paper_author_searcher.pdf_front_matter import title_in_region
 from paper_author_searcher.pdf_providers import HomepagePDFProvider, WebSearchPDFProvider
 from paper_author_searcher.pdf_resolver import PDFResolver
 from paper_author_searcher.status import WEB_SEARCH_OFF, IdentityStatus, ProviderStatus
-from paper_author_searcher.web_search import SearchHit
+from paper_author_searcher.web_search import FallbackWebSearch, SearchHit
 from paper_author_searcher.workflow.stages import PDFDiscoveryStage
 
 PAPER = {'title': 'A study of many things', 'authors': ['Ada Lovelace', 'Alan Turing'], 'ownership_status': 'verified'}
@@ -117,6 +117,42 @@ class WebSearchProviderTests(unittest.TestCase):
         self.assertEqual(len(search.queries), 3)
 
 
+class NamedSearch(FakeSearch):
+    def __init__(self, name, hits=(), error=None):
+        super().__init__(hits, error)
+        self.name = name
+
+
+class FallbackWebSearchTests(unittest.TestCase):
+    def test_a_provider_out_of_credit_hands_over_for_the_rest_of_the_run(self):
+        tavily = NamedSearch('tavily', error=SourceError('HTTP 432', status_code=432))
+        brave = NamedSearch('brave', hits=[SearchHit('https://a.example.org/x.pdf')])
+        search = FallbackWebSearch([tavily, brave])
+        self.assertEqual(search.search('q', 5), brave.hits)
+        self.assertEqual(search.search('q', 5), brave.hits)
+        self.assertEqual((len(tavily.queries), len(brave.queries), search.name), (1, 2, 'brave'))
+
+    def test_a_passing_failure_tries_the_next_but_keeps_the_provider(self):
+        tavily = NamedSearch('tavily', error=SourceError('HTTP 429', status_code=429))
+        brave = NamedSearch('brave', hits=[])
+        search = FallbackWebSearch([tavily, brave])
+        search.search('q', 5)
+        tavily.error = None
+        search.search('q', 5)
+        self.assertEqual((len(tavily.queries), len(brave.queries), search.name), (2, 1, 'tavily'))
+
+    def test_when_every_provider_fails_the_last_error_reaches_the_caller(self):
+        search = FallbackWebSearch(
+            [
+                NamedSearch('a', error=SourceError('x', status_code=500)),
+                NamedSearch('b', error=SourceError('y', status_code=432)),
+            ]
+        )
+        with self.assertRaises(SourceError) as raised:
+            search.search('q', 5)
+        self.assertEqual(raised.exception.status_code, 432)
+
+
 class FallbackStageTests(unittest.TestCase):
     def resolve(self, papers, primary_candidates, maximum=DEFAULT_PDF.web_search_maximum_papers):
         primary = Mock()
@@ -152,6 +188,35 @@ class FallbackStageTests(unittest.TestCase):
         ]
         fallback, _ = self.resolve(papers, {'Has a PDF': ['https://x.example.org/a.pdf']})
         self.assertEqual([call.args[0]['title'] for call in fallback.find.call_args_list], ['New', 'Old'])
+
+    def test_works_with_no_tied_copy_are_searched_before_those_a_site_refused(self):
+        papers = [
+            {'title': 'Blocked', 'year': 2024, 'ownership_status': 'verified'},
+            {'title': 'Untied', 'year': 2010, 'ownership_status': 'verified'},
+        ]
+        primary = Mock()
+        primary.name = 'primary'
+        primary.find.side_effect = lambda paper: PDFProviderResult(
+            'primary',
+            candidates=[
+                PDFCandidate('https://dl.acm.org/doi/pdf/1', 'primary', access_basis='x', identity_status='verified')
+            ]
+            if paper['title'] == 'Blocked'
+            else [],
+        )
+        fallback = Mock()
+        fallback.name = 'web_search'
+        fallback.find.return_value = PDFProviderResult('web_search')
+        validator = Mock()
+
+        def refuse(candidate, paper):
+            candidate.validation_status = 'invalid'
+            return candidate
+
+        validator.validate.side_effect = refuse
+        config = replace(DEFAULT_PDF, web_search_maximum_papers=1, lookup_workers=1)
+        PDFResolver([primary], validator, config=config, fallbacks=[fallback]).resolve({'papers': papers})
+        self.assertEqual([call.args[0]['title'] for call in fallback.find.call_args_list], ['Untied'])
 
     def test_an_edition_with_a_pdf_covers_the_work(self):
         papers = [
