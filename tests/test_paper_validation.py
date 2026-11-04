@@ -13,7 +13,7 @@ from paper_author_searcher.models import (
     ProfessorProfile,
 )
 from paper_author_searcher.paper_deduplication import deduplicate_papers
-from paper_author_searcher.paper_ownership import PaperOwnershipValidator, record_fields
+from paper_author_searcher.paper_ownership import PaperOwnershipValidator, abbreviated, record_fields
 from paper_author_searcher.paper_reanalysis import reanalyze_saved_result
 from paper_author_searcher.paper_types import classify_record
 from paper_author_searcher.status import AnchorKind, OwnershipStatus
@@ -210,7 +210,39 @@ class NamesakeGroupTests(unittest.TestCase):
         statuses = self.unanchored(places, main_venue='CoRR', other_venue='CoRR')
         self.assertEqual(statuses['Main one'], OwnershipStatus.NEEDS_REVIEW)
 
-    def unanchored(self, places, main_venue='PACT', other_venue='J. King Saud Univ. Comput. Inf. Sci.'):
+    def test_a_lone_paper_printing_only_an_unknown_school_is_held(self):
+        # UAMD-Net: one paper, no shared coauthor or journal, its byline at South China University of Technology.
+        lone = replace(self.paper('Depth one', ('Junli Lin',), doi='10.1/d1'), venue='IEEE TCSVT')
+        places = Places(
+            set(), {'10.1/x1': {'University of Toronto'}, '10.1/d1': {'South China University of Technology'}}
+        )
+        statuses = self.unanchored(places, extra=[lone])
+        self.assertEqual(statuses['Depth one'], OwnershipStatus.NEEDS_REVIEW)
+        self.assertEqual(statuses['Music one'], OwnershipStatus.VERIFIED)
+
+    def test_a_lone_paper_from_a_school_the_linked_papers_print_is_kept(self):
+        # Christian Wolf's solo paper prints Princeton, as his coauthored papers from his PhD there do.
+        lone = replace(self.paper('Solo', (), doi='10.1/s1'), venue='AEJ Macro')
+        places = Places(
+            set(),
+            {
+                '10.1/m1': {'Princeton University'},
+                '10.1/x1': {'University of Toronto'},
+                '10.1/s1': {'Princeton University'},
+            },
+        )
+        statuses = self.unanchored(places, main_venue='Journal of Macro', other_venue='Journal of Macro', extra=[lone])
+        self.assertEqual(statuses['Solo'], OwnershipStatus.VERIFIED)
+
+    def test_two_unlinked_papers_from_one_other_school_do_not_vouch_for_each_other(self):
+        first = replace(self.paper('Depth one', ('Junli Lin',), doi='10.1/d1'), venue='IEEE TCSVT')
+        second = replace(self.paper('Depth two', ('Huabiao Qin',), doi='10.1/d2'), venue='ICIP')
+        scut = 'South China University of Technology'
+        places = Places(set(), {'10.1/x1': {'University of Toronto'}, '10.1/d1': {scut}, '10.1/d2': {scut}})
+        statuses = self.unanchored(places, extra=[first, second])
+        self.assertEqual((statuses['Depth one'], statuses['Depth two']), (OwnershipStatus.NEEDS_REVIEW,) * 2)
+
+    def unanchored(self, places, main_venue='PACT', other_venue='J. King Saud Univ. Comput. Inf. Sci.', extra=()):
         main = [
             self.paper('Main one', ('Jane Smith', 'Li Wei'), doi='10.1/m1'),
             self.paper('Main two', ('Jane Smith', 'Omar Hadi'), doi='10.1/m2'),
@@ -220,8 +252,10 @@ class NamesakeGroupTests(unittest.TestCase):
             self.paper('Music one', ('Simon Dixon', 'Ann Lee'), doi='10.1/x1'),
             self.paper('Music two', ('Simon Dixon',)),
         ]
-        records = [replace(item, venue=main_venue) for item in main] + [
-            replace(item, venue=other_venue) for item in other
+        records = [
+            *(replace(item, venue=main_venue) for item in main),
+            *(replace(item, venue=other_venue) for item in other),
+            *extra,
         ]
         target = replace(
             profile(),
@@ -420,6 +454,35 @@ class OwnershipTests(unittest.TestCase):
             papers[0].records[0].author_details[0]['institutions'] = [{'display_name': 'Example University'}]
             PaperOwnershipValidator().validate(papers, target)
             self.assertEqual(papers[0].ownership_status, expected)
+
+    def test_an_initials_byline_in_another_unit_of_the_school_is_not_the_person(self):
+        # "G Chen, Interdepartmental Division of Critical Care Medicine, University of Toronto" is not the computer
+        # scientist the search asked for.
+        def run(printed, department, affiliation):
+            # A merged OpenAlex profile lists the initials form among the person's names, so the byline matches.
+            target = replace(profile(), orcid=None, requested_department=department, name_aliases=['A Morgan'])
+            papers = deduplicate_papers([record(name=printed)])
+            details = papers[0].records[0].author_details[0]
+            details['raw_author_name'] = printed
+            details['institutions'] = [{'display_name': 'Example University'}]
+            details['affiliations'] = [{'raw_affiliation_string': affiliation}]
+            PaperOwnershipValidator().validate(papers, target)
+            return papers[0].ownership_status
+
+        medicine = 'Division of Critical Care Medicine, Example University, Toronto'
+        computing = 'Department of Computer Science, Example University'
+        self.assertEqual(run('A Morgan', 'Computer Science', medicine), 'needs_review')
+        self.assertEqual(run('Alex Morgan', 'Computer Science', medicine), 'verified')
+        self.assertEqual(run('A Morgan', 'Computer Science', computing), 'verified')
+        self.assertEqual(run('A Morgan', 'Computer Science', 'Example University, Toronto'), 'verified')
+        self.assertEqual(run('A Morgan', None, medicine), 'verified')
+        self.assertEqual(run('A Morgan', 'CS', medicine), 'verified')
+
+    def test_initials_only_bylines(self):
+        for name in ('G Chen', 'G. H. Chen', 'GC Chen', 'Chen G', 'Chen GC', 'Chen, G.'):
+            self.assertTrue(abbreviated(name), name)
+        for name in ('Guancheng Chen', 'Chen, Guancheng', 'Yi Cui', 'LI Wei', 'Chen'):
+            self.assertFalse(abbreviated(name), name)
 
     def test_past_institution_counts_only_for_an_orcid_anchored_author(self):
         def run(kind, config=None):

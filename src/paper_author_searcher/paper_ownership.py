@@ -10,7 +10,7 @@ from .matching import canonical_orcid, institution_similarity, name_similarity, 
 from .models import AnchorEvidence
 from .paper_authorship import byline_forms, canonical_author_id, signature_names
 from .paper_deduplication import author_signatures_match, duplicate_evidence
-from .precision_guards import GuardContext, PrecisionGuard
+from .precision_guards import DepartmentMatcher, GuardContext, PrecisionGuard, target_affiliations
 from .source_traits import OPENALEX, traits_of
 from .status import AnchorKind, OwnershipStatus
 
@@ -34,7 +34,41 @@ UNPLACED_GROUP_NOTE = (
     "school on its byline, and no coauthor or journal links this paper's group to it while its bylines name only "
     'other places'
 )
+UNPLACED_PAPER_NOTE = (
+    'Held for review: the identity has no ORCID or own-page anchor, other papers print the requested school on '
+    "their bylines, and this paper's byline names only places that none of the person's other papers print"
+)
 LISTED_CLAIM = "Listed on the researcher's own publication list (homepage or supplied ORCID) with a compatible byline"
+
+
+# Run-together initials ("GC") are at most this many capitals; a department name needs this many words to compare.
+MAXIMUM_JOINED_INITIALS = 3
+MINIMUM_DEPARTMENT_WORDS = 2
+# A byline needs a family name and at least one given name.
+MINIMUM_NAME_TOKENS = 2
+
+
+def abbreviated(name):
+    """Whether a byline gives the given names as initials only ("G Chen", "G. H. Chen", "Chen, G.")."""
+    if ',' in name:
+        family, _, given = name.partition(',')
+        return bool(family.strip()) and _initials_only(given)
+    tokens = [token for token in re.split(r'[\s.]+', name) if token]
+    if len(tokens) < MINIMUM_NAME_TOKENS:
+        return False
+    # "G Chen" / "GC Chen" put the initials first; Medline's "Chen G" / "Chen GC" put them last.
+    return (_initials_only(' '.join(tokens[:-1])) and len(tokens[-1]) > 1) or (
+        _initials_only(' '.join(tokens[1:])) and len(tokens[0]) > 1
+    )
+
+
+def _initials_only(given):
+    parts = [part for part in re.split(r'[\s.\-]+', given) if part]
+    # Run-together initials ("GC") are capitals with no vowel, so an upper-case name ("LI Wei") is not one.
+    return bool(parts) and all(
+        len(part) == 1 or (part.isupper() and len(part) <= MAXIMUM_JOINED_INITIALS and not set(part) & set('AEIOUY'))
+        for part in parts
+    )
 
 
 def record_fields(record):
@@ -58,6 +92,7 @@ class PaperOwnershipValidator:
         self._rare_name = False
         # Optional: where a source places the person, to tell a merged namesake's papers apart.
         self.places = places
+        self._departments = guard.departments if guard is not None else DepartmentMatcher()
 
     @staticmethod
     def _selected_ids(profile, source):
@@ -200,6 +235,8 @@ class PaperOwnershipValidator:
             past = canonical_author_id(record.source, author.get('author_id')) in history_ids
             if self._guard.foreign(record) or not self._guard.department_agrees(record, author):
                 continue
+            if self._abbreviated_in_other_unit(record, author, profile):
+                continue
             for institution in author.get('institutions') or []:
                 observed = institution.get('display_name')
                 if not observed:
@@ -213,6 +250,28 @@ class PaperOwnershipValidator:
                 ):
                     return observed + ' (past affiliation of an ORCID-anchored author ID)'
         return None
+
+    def _abbreviated_in_other_unit(self, record, author, profile):
+        """An initials-only byline ("G Chen") whose printed unit is not the requested department.
+
+        A big school holds many people of one surname and initial: "G Chen, Interdepartmental Division of Critical
+        Care Medicine, University of Toronto" is not the computer scientist the search asked for. A byline with the
+        full given name, or one that prints no unit, is unaffected, and so is a search without a department or with
+        an abbreviation ("CS") too short to compare.
+        """
+        wanted = self._departments.words(profile.requested_department or '')
+        if len(wanted) < MINIMUM_DEPARTMENT_WORDS or not abbreviated(
+            author.get('raw_author_name') or author.get('name') or ''
+        ):
+            return False
+        phrases = [
+            phrase
+            for affiliation in target_affiliations(record, author)
+            for phrase in self._departments.phrases(affiliation)
+        ]
+        return bool(phrases) and not any(
+            self._departments.agree(phrase, profile.requested_department) for phrase in phrases
+        )
 
     def _evaluate_record(self, record, profile):
         evidence = list(record.attribution_evidence)
@@ -407,7 +466,9 @@ class PaperOwnershipValidator:
 
         With no ORCID or own page to say which papers are the person's, the school is the anchor. Once one coauthor
         group prints it on a byline, a group no coauthor or journal links to it, whose bylines name only other places,
-        is held.
+        is held. A group smaller than ``namesake_group_minimum_papers`` (often one paper) is held only when none of
+        those places appears on the linked groups' bylines: the driving-vision papers name South China University of
+        Technology, which no Toronto paper prints.
         The largest group is no exception: here the person is the smallest. Nothing is held when no group prints the
         school, or for an anchored identity, whose earlier institutions the bylines may show.
         """
@@ -437,17 +498,44 @@ class PaperOwnershipValidator:
         school_venues = set().union(
             *(self._group_venues(group) for group, is_placed in zip(groups, placed, strict=True) if is_placed)
         )
-        for group, places, is_placed in zip(groups, seen, placed, strict=True):
-            # A single paper is its own group whenever it has no coauthor, as an economist's solo papers do.
-            small = len(group) < self.config.namesake_group_minimum_papers
-            if is_placed or small or not places or self._group_venues(group) & school_venues:
+        unlinked = [
+            not is_placed and bool(places) and not self._group_venues(group) & school_venues
+            for group, places, is_placed in zip(groups, seen, placed, strict=True)
+        ]
+        # A single paper is its own group whenever it has no coauthor, as an economist's solo papers do. A small group
+        # is held only when its bylines name no place that the person's kept papers print: a student's solo paper
+        # from the school where they wrote their thesis prints that school, as their coauthored papers from then do.
+        # Only groups the school or a journal links to the person vouch for a place; two unlinked namesake papers
+        # from one other university do not vouch for each other.
+        known = [
+            place
+            for places, suspect in zip(seen, unlinked, strict=True)
+            if not suspect
+            for byline in places
+            for place in byline
+        ]
+        for group, places, suspect in zip(groups, seen, unlinked, strict=True):
+            if not suspect:
                 continue
+            is_large = len(group) >= self.config.namesake_group_minimum_papers
+            if not is_large and self._places_known(places, known):
+                continue
+            note = UNPLACED_GROUP_NOTE if is_large else UNPLACED_PAPER_NOTE
             for paper in group:
                 for record in paper.records:
                     if record.ownership_status == OwnershipStatus.VERIFIED:
                         record.ownership_status = OwnershipStatus.NEEDS_REVIEW
-                        record.ownership_evidence.append(UNPLACED_GROUP_NOTE)
+                        record.ownership_evidence.append(note)
                 self._aggregate(paper)
+
+    def _places_known(self, places, known):
+        """Whether a small group's bylines name a place that the person's linked papers print too."""
+        return any(
+            institution_similarity(place, other) >= self.config.institution_similarity
+            for byline in places
+            for place in byline
+            for other in known
+        )
 
     def _group_venues(self, group):
         """The journals and conferences a group's papers appear in, without servers anyone can post to."""
