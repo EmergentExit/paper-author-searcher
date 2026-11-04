@@ -1,6 +1,7 @@
 """Where OpenAlex places a person: the institutions of their author ID, and those printed on a paper's byline."""
 
 import logging
+import re
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
@@ -46,7 +47,7 @@ class AuthorshipPlaces:
                     {
                         'filter': 'doi:' + '|'.join(batch),
                         'per-page': self.batch_size,
-                        'select': 'doi,authorships',
+                        'select': 'doi,authorships,locations',
                         'api_key': self.api_key,
                     },
                 )
@@ -62,5 +63,28 @@ class AuthorshipPlaces:
                     if institution.get('display_name')
                 }
                 if places:
-                    found[(work.get('doi') or '').lower().removeprefix(DOI_PREFIX)] = places
+                    for doi in work_dois(work) & set(batch):
+                        found[doi] = places
         return found
+
+
+ARXIV_ABSTRACT = re.compile(r'arxiv\.org/abs/([^/?#]+?)(?:v\d+)?$', re.IGNORECASE)
+
+
+def work_dois(work: dict[str, Any]) -> set[str]:
+    """Every DOI a work answers to, lower-cased: its own, and those of the copies it merges.
+
+    OpenAlex files an arXiv preprint under its journal version, so a filter on the preprint's DOI
+    ("10.48550/arxiv.2503.06064") returns a work whose own DOI is the journal's.
+    """
+    found = {(work.get('doi') or '').lower().removeprefix(DOI_PREFIX)}
+    for location in work.get('locations') or []:
+        for url in (location.get('landing_page_url'), location.get('pdf_url')):
+            text = (url or '').strip()
+            if DOI_PREFIX in text.lower():
+                found.add(text.lower().split(DOI_PREFIX, 1)[1])
+            match = ARXIV_ABSTRACT.search(text)
+            if match:
+                found.add('10.48550/arxiv.' + match.group(1).lower())
+    found.discard('')
+    return found
