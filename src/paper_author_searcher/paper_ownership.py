@@ -29,6 +29,11 @@ NAMESAKE_GROUP_NOTE = (
     "Held for review: no coauthor links this paper's group to the person's other papers, "
     'and OpenAlex prints its name at institutions the person never held'
 )
+UNPLACED_GROUP_NOTE = (
+    'Held for review: the identity has no ORCID or own-page anchor, another group of papers prints the requested '
+    "school on its byline, and no coauthor or journal links this paper's group to it while its bylines name only "
+    'other places'
+)
 LISTED_CLAIM = "Listed on the researcher's own publication list (homepage or supplied ORCID) with a compatible byline"
 
 
@@ -393,7 +398,66 @@ class PaperOwnershipValidator:
         self._verify_rare_name_papers(papers, profile)
         self._verify_curated_profile_venues(papers, profile)
         self._hold_namesake_groups(papers, profile)
+        self._hold_unplaced_groups(papers, profile)
         return papers
+
+    def _hold_unplaced_groups(self, papers, profile):
+        """An identity found by name and school alone can be a merge: DBLP and OpenAlex filed an IBM engineer, a
+        driving-vision group and a Toronto student under one Guancheng Chen, and the student's school matched.
+
+        With no ORCID or own page to say which papers are the person's, the school is the anchor. Once one coauthor
+        group prints it on a byline, a group no coauthor or journal links to it, whose bylines name only other places,
+        is held.
+        The largest group is no exception: here the person is the smallest. Nothing is held when no group prints the
+        school, or for an anchored identity, whose earlier institutions the bylines may show.
+        """
+        if not self.places or profile.orcid or profile.identity_anchors:
+            return
+        schools = profile.matched_affiliations or [profile.requested_university or profile.university or '']
+        schools = [school for school in schools if school]
+        groups = self._coauthor_groups(papers, profile)
+        if not schools or len(groups) <= 1:
+            return
+        dois = sorted({paper.doi.lower() for group in groups for paper in group if paper.doi})
+        on_byline = self.places.on_bylines(dois, lambda name: self._names_target(name, profile))
+
+        def at_school(place):
+            return any(
+                institution_similarity(place, school) >= self.config.institution_similarity for school in schools
+            )
+
+        seen = [
+            [on_byline[paper.doi.lower()] for paper in group if paper.doi and paper.doi.lower() in on_byline]
+            for group in groups
+        ]
+        placed = [any(at_school(place) for places in group for place in places) for group in seen]
+        if not any(placed):
+            return
+        # A person who moved keeps publishing in the same journals; merged namesakes in other fields do not.
+        school_venues = set().union(
+            *(self._group_venues(group) for group, is_placed in zip(groups, placed, strict=True) if is_placed)
+        )
+        for group, places, is_placed in zip(groups, seen, placed, strict=True):
+            # A single paper is its own group whenever it has no coauthor, as an economist's solo papers do.
+            small = len(group) < self.config.namesake_group_minimum_papers
+            if is_placed or small or not places or self._group_venues(group) & school_venues:
+                continue
+            for paper in group:
+                for record in paper.records:
+                    if record.ownership_status == OwnershipStatus.VERIFIED:
+                        record.ownership_status = OwnershipStatus.NEEDS_REVIEW
+                        record.ownership_evidence.append(UNPLACED_GROUP_NOTE)
+                self._aggregate(paper)
+
+    def _group_venues(self, group):
+        """The journals and conferences a group's papers appear in, without servers anyone can post to."""
+        venues = {normalize(record.venue) for paper in group for record in paper.records if record.venue}
+        return {
+            venue
+            for venue in venues
+            if venue
+            and not any(f' {open_venue} ' in f' {venue} ' for open_venue in self.config.unplaced_group_open_venues)
+        }
 
     def _hold_namesake_groups(self, papers, profile):
         """A curated profile can merge two people: DBLP's Huan Zhang holds a music researcher's papers among hundreds of
