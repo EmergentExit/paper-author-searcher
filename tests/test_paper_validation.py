@@ -177,6 +177,64 @@ class NamesakeGroupTests(unittest.TestCase):
         self.assertEqual(papers[0].ownership_status, OwnershipStatus.NEEDS_REVIEW)
         self.assertEqual(main[0].ownership_status, OwnershipStatus.VERIFIED)
 
+    def test_an_unanchored_identity_keeps_only_the_group_at_the_requested_school(self):
+        # Guancheng Chen: name and school alone resolved a merge; the person is the smallest group.
+        places = Places(set(), {'10.1/m1': {'IBM Research - China'}, '10.1/x1': {'University of Toronto'}})
+        statuses = self.unanchored(places)
+        self.assertEqual(statuses['Main one'], OwnershipStatus.NEEDS_REVIEW)
+        self.assertEqual(statuses['Main three'], OwnershipStatus.NEEDS_REVIEW)
+        self.assertEqual(statuses['Music one'], OwnershipStatus.VERIFIED)
+        self.assertEqual(statuses['Music two'], OwnershipStatus.VERIFIED)
+
+    def test_an_unanchored_identity_with_no_group_at_the_school_keeps_everything(self):
+        statuses = self.unanchored(Places(set(), {'10.1/m1': {'IBM Research - China'}, '10.1/x1': {'Queen Mary'}}))
+        self.assertEqual(set(statuses.values()), {OwnershipStatus.VERIFIED})
+
+    def test_a_group_with_no_printed_institution_is_kept(self):
+        statuses = self.unanchored(Places(set(), {'10.1/x1': {'University of Toronto'}}))
+        self.assertEqual(statuses['Main one'], OwnershipStatus.VERIFIED)
+
+    def test_an_anchored_identity_is_left_to_the_namesake_check(self):
+        places = Places({'UIUC'}, {'10.1/m1': {'IBM Research - China'}, '10.1/x1': {'University of Toronto'}})
+        statuses = self.statuses(places)
+        self.assertEqual(statuses['Main one'], OwnershipStatus.VERIFIED)
+
+    def test_a_group_sharing_a_journal_with_the_school_group_is_kept(self):
+        # Christian Wolf's PhD papers print his former schools, share no coauthor, and appear in the same journal.
+        places = Places(set(), {'10.1/m1': {'Princeton University'}, '10.1/x1': {'University of Toronto'}})
+        statuses = self.unanchored(places, main_venue='Journal of Macro', other_venue='Journal of Macro')
+        self.assertEqual(statuses['Main one'], OwnershipStatus.VERIFIED)
+
+    def test_a_preprint_server_links_no_groups(self):
+        places = Places(set(), {'10.1/m1': {'IBM Research - China'}, '10.1/x1': {'University of Toronto'}})
+        statuses = self.unanchored(places, main_venue='CoRR', other_venue='CoRR')
+        self.assertEqual(statuses['Main one'], OwnershipStatus.NEEDS_REVIEW)
+
+    def unanchored(self, places, main_venue='PACT', other_venue='J. King Saud Univ. Comput. Inf. Sci.'):
+        main = [
+            self.paper('Main one', ('Jane Smith', 'Li Wei'), doi='10.1/m1'),
+            self.paper('Main two', ('Jane Smith', 'Omar Hadi'), doi='10.1/m2'),
+            self.paper('Main three', ('Li Wei', 'Omar Hadi'), doi='10.1/m3'),
+        ]
+        other = [
+            self.paper('Music one', ('Simon Dixon', 'Ann Lee'), doi='10.1/x1'),
+            self.paper('Music two', ('Simon Dixon',)),
+        ]
+        records = [replace(item, venue=main_venue) for item in main] + [
+            replace(item, venue=other_venue) for item in other
+        ]
+        target = replace(
+            profile(),
+            orcid=None,
+            requested_university='University of Toronto',
+            author_ids={'dblp': '123/4433-1', 'openalex': 'A1'},
+            author_id_aliases={'dblp': ['123/4433-1'], 'openalex': ['A1']},
+            curated_author_ids={'dblp': ['123/4433-1']},
+        )
+        papers = deduplicate_papers(records)
+        PaperOwnershipValidator(places=places).validate(papers, target)
+        return {paper.title: paper.ownership_status for paper in papers}
+
     def test_a_consortium_paper_links_nobody(self):
         crowd = tuple(f'Person{letter} Crowd' for letter in 'abcdefghijklmn')
         bridge = self.paper('Consortium', ('Simon Dixon', 'Jane Smith', *crowd))
