@@ -7,11 +7,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from typing import Any, Protocol
 
+from .career import CareerTimeline
 from .config import DEFAULT_COLLECTION, DEFAULT_DEDUPLICATION, DeduplicationConfig, RawMetadataPolicy
 from .contender_adjudication import ContenderEvidence, DepartmentAdjudicator
 from .listed_works import ListedWorkRetriever
 from .logging_config import log_isolated_failure
-from .models import Paper, PaperCollectionResult, PaperRecord, PaperSourceResult, ProfessorProfile
+from .models import CareerPosition, Paper, PaperCollectionResult, PaperRecord, PaperSourceResult, ProfessorProfile
 from .paper_authorship import canonical_author_id
 from .paper_deduplication import deduplicate_papers
 from .paper_ownership import PaperOwnershipValidator
@@ -57,6 +58,7 @@ class PaperCollector:
         listed_works: ListedWorkRetriever | None = None,
         adjudicator: DepartmentAdjudicator | None = None,
         name_searches: Sequence[NameSearch] = (),
+        career: CareerTimeline | None = None,
     ) -> None:
         self.providers = list(providers)
         # Optional: fetch works the person lists themselves that no selected author ID returned.
@@ -65,6 +67,8 @@ class PaperCollector:
         self.adjudicator = adjudicator
         # Optional: sources searched by the person's name; their records join under a name key.
         self.name_searches = list(name_searches)
+        # Optional: where and when the person was before (career.CareerTimeline), for the ownership checks.
+        self.career = career
         # Optional: merge the person's split author profiles found by their verified coauthor network.
         self.ownership_validator = ownership_validator or PaperOwnershipValidator()
         self.deduplication = deduplication
@@ -132,6 +136,8 @@ class PaperCollector:
         selected_author: tuple[str, str] | None = None,
         progress: Callable[..., None] | None = None,
     ) -> PaperCollectionResult:
+        if self.career is not None:
+            profile = self.career.attach(profile)
         selected, confirmation = self._select_ids(profile, selected_author)
         available = {provider.name: provider for provider in self.providers}
         sources = []
@@ -212,4 +218,5 @@ class PaperCollector:
             selected_author_ids=selected,
             identity_confirmation=confirmation,
             professor_identity_status=profile.status,
+            career=[CareerPosition.coerce(item) for item in profile.career],
         )

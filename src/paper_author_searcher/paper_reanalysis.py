@@ -5,7 +5,7 @@ from dataclasses import fields
 
 from .config import DEFAULT_DEDUPLICATION, DEFAULT_OWNERSHIP, DeduplicationConfig, OwnershipConfig
 from .json_types import JSONObject
-from .models import PaperCollectionResult, PaperRecord, PaperSourceResult, ProfessorProfile
+from .models import CareerPosition, PaperCollectionResult, PaperRecord, PaperSourceResult, ProfessorProfile
 from .paper_deduplication import deduplicate_papers
 from .paper_ownership import PaperOwnershipValidator
 from .status import OwnershipStatus, UniversityStatus
@@ -66,6 +66,8 @@ def saved_collection_profile(data: JSONObject) -> ProfessorProfile:
         match_score=identity.get('match_score', 0),
         research_interests=identity.get('research_interests') or [],
         identity_anchors=identity.get('identity_anchors') or [],
+        previous_universities=identity.get('previous_universities') or [],
+        career=[CareerPosition.coerce(item) for item in collection.get('career') or []],
     )
 
 

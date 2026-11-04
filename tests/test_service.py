@@ -892,6 +892,9 @@ class RunnerOutcomeTests(unittest.TestCase):
             (query.department, query.orcid, query.profile_urls),
             ('Computer Science', '0000-0002-1825-0097', ['https://p']),
         )
+        moved = dict(REQUEST, hints={'previous_universities': ['Stanford University']})
+        self.assertEqual(validator('search-request').errors(moved), [])
+        self.assertEqual(query_from_request(moved).previous_universities, ['Stanford University'])
 
 
 class ResultTests(unittest.TestCase):

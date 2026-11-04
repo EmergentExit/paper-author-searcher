@@ -498,6 +498,7 @@ class ProfessorResolver:
             identity_anchors=signals.anchors,
             orcid_conflict=signals.orcid_conflict,
             requested_department=query.department,
+            previous_universities=list(query.previous_universities),
             listed_works=list(anchors.listed_works) if anchors is not None else [],
             discovered=dict(anchors.discovered) if anchors is not None else {},
             listed_pdfs=list(anchors.listed_pdfs) if anchors is not None else [],
