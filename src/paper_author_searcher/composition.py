@@ -13,6 +13,7 @@ from typing import Any, ClassVar
 
 from .authorship_places import AuthorshipPlaces
 from .byline_disambiguation import BylineDisambiguator
+from .career import STATED_SOURCE, CareerSource, CareerTimeline, OrcidCareer, StatedCareer
 from .config import CollectionConfig, DownloadConfig, PDFConfig
 from .contender_adjudication import DepartmentAdjudicator
 from .cs_sources import OpenReviewProfiles
@@ -402,8 +403,27 @@ class ServiceContainer:
             raw_metadata=self.collection_config.raw_metadata,
             listed_works=self.listed_work_retriever,
             name_searches=self.name_searches,
+            career=self.career,
             adjudicator=DepartmentAdjudicator(self.collection_config, DepartmentMatcher(self.settings.precision)),
         )
+
+    @cached_property
+    def career(self) -> CareerTimeline:
+        """The career sources ``OwnershipConfig.career_sources`` names, in order."""
+        settings = self.settings
+        available: dict[str, CareerSource] = {
+            STATED_SOURCE: StatedCareer(),
+            OrcidCareer.name: OrcidCareer(
+                OrcidAffiliations(
+                    self.http_client, settings.sources, settings.discovery.orcid_affiliation_sections
+                ).career,
+                settings.matching.matched_school,
+            ),
+        }
+        unknown = set(settings.ownership.career_sources) - set(available)
+        if unknown:
+            raise ValueError(f'Unknown career sources: {", ".join(sorted(unknown))}')
+        return CareerTimeline(available[name] for name in settings.ownership.career_sources)
 
     @cached_property
     def name_searches(self) -> list[NameSearch]:

@@ -46,6 +46,12 @@ def add_hint_arguments(parser):
         default=[],
         help='DOI, arXiv ID or exact title of a paper by this researcher (repeatable)',
     )
+    parser.add_argument(
+        '--previous-university',
+        action='append',
+        default=[],
+        help='A school the researcher studied or worked at before (repeatable); its papers are then accepted',
+    )
 
 
 def query_from_args(args):
@@ -62,6 +68,7 @@ def query_from_args(args):
         scholar_url=getattr(args, 'scholar_url', None),
         profile_urls=list(getattr(args, 'profile_url', [])),
         publication_pages=list(getattr(args, 'publication_page', [])),
+        previous_universities=list(getattr(args, 'previous_university', [])),
     )
 
 

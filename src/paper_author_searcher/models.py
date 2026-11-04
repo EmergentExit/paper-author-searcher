@@ -75,6 +75,8 @@ class ProfessorQuery:
     profile_urls: list[str] = field(default_factory=list)
     # Further pages listing the person's publications (lab page, CV PDF), supplied or discovered.
     publication_pages: list[str] = field(default_factory=list)
+    # Schools the person studied or worked at before, as the caller states them (no years).
+    previous_universities: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.name.strip() or not self.university.strip():
@@ -102,6 +104,41 @@ class CuratedPosition:
     # Unit phrases ("department of computer science"); empty when the record names none.
     units: tuple[str, ...] = ()
     current: bool = False
+
+
+@dataclass(frozen=True)
+class CareerPosition:
+    """A place the person studied or worked, from a record they keep or vouch for (their ORCID, the caller).
+
+    Years are inclusive; a missing year leaves that side open, so a position with neither covers any year.
+    """
+
+    institution: str
+    source: str
+    start_year: int | None = None
+    end_year: int | None = None
+
+    def during(self, year: int | None, tolerance: int = 0) -> bool:
+        """Whether ``year`` falls in the position, ``tolerance`` years either side; an unknown year never does
+        unless the position has no years at all."""
+        if self.start_year is None and self.end_year is None:
+            return True
+        if year is None:
+            return False
+        starts = self.start_year is None or year >= self.start_year - tolerance
+        return starts and (self.end_year is None or year <= self.end_year + tolerance)
+
+    @classmethod
+    def coerce(cls, value: Union['CareerPosition', Mapping[str, Any]]) -> 'CareerPosition':
+        """Accept the structured form or its JSON dict (a checkpoint)."""
+        if isinstance(value, CareerPosition):
+            return value
+        return cls(
+            str(value['institution']),
+            str(value.get('source') or ''),
+            value.get('start_year'),
+            value.get('end_year'),
+        )
 
 
 @dataclass(slots=True)
@@ -207,6 +244,10 @@ class ProfessorProfile(ValidatedStatuses):
     requested_department: str | None = None
     # Works the person's own publication page lists (canonical DOI / arXiv / normalized-title keys).
     listed_works: list[str] = field(default_factory=list)
+    # Schools the caller says the person was at before (ProfessorQuery.previous_universities).
+    previous_universities: list[str] = field(default_factory=list)
+    # Where and when the person was, from sources they keep (career.CareerTimeline); used by ownership checks.
+    career: list[CareerPosition] = field(default_factory=list)
     # Collected contenders' author IDs, one mapping per contender, when the identity is unconfirmed.
     contender_ids: list[dict[str, list[str]]] = field(default_factory=list)
     # What identity discovery found for the query (ORCID, pages and why); see identity_discovery.Discovery.
@@ -297,6 +338,8 @@ class PaperCollectionResult(ValidatedStatuses):
     selected_author_ids: dict[str, list[str]]
     identity_confirmation: str
     professor_identity_status: ResolutionStatus = ResolutionStatus.UNKNOWN
+    # The career the ownership checks used (career.CareerTimeline), so a saved result can be checked again.
+    career: list[CareerPosition] = field(default_factory=list)
 
     def to_dict(self, academic_only: bool = False, ownership_statuses: Sequence[str] | None = None) -> dict[str, Any]:
         from .paper_types import ACADEMIC_TYPES
