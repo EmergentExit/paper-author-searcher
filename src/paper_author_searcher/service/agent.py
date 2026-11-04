@@ -106,6 +106,7 @@ def _paper(paper: dict[str, Any]) -> dict[str, Any]:
             'url': full_text.get('url'),
             'download': full_text.get('download'),
             'browser_url': full_text.get('browser_url'),
+            'publisher_link': full_text.get('publisher_link'),
         },
         'confidence': paper.get('confidence', 'medium'),
         'evidence': paper.get('evidence') or [],

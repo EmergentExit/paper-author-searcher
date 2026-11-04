@@ -31,6 +31,7 @@ from paper_author_searcher.service.model import (
     SubmissionLimits,
 )
 from paper_author_searcher.service.ports import SearchOutcome
+from paper_author_searcher.service.publisher_links import PublisherLinks
 from paper_author_searcher.service.results import ResultView, candidates
 from paper_author_searcher.service.retention import RetentionSweeper
 from paper_author_searcher.service.runner import RunnerOptions, WorkflowRunner, query_from_request
@@ -958,6 +959,7 @@ class ResultTests(unittest.TestCase):
                 'version': 'publishedVersion',
                 'download': '/pdf/0',
                 'browser_url': None,
+                'publisher_link': None,
             },
         )
         # A file outside the run's folder is never served, but the paper keeps its validated link.
@@ -990,6 +992,18 @@ class ResultTests(unittest.TestCase):
         result = self.view.build(self.report, include_needs_review=True)
         self.assertEqual(result['papers'][-1]['ownership_status'], 'needs_review')
         self.assertEqual(result['papers'][-1]['full_text']['status'], 'none')
+
+    def test_each_paper_with_a_doi_gets_its_publisher_link_when_one_is_configured(self):
+        links = PublisherLinks.from_config(
+            [('10.1/', 'Example', 'https://pub.example/pdf/{doi}')], 'https://doi.org/{doi}'
+        )
+        result = ResultView(lambda paper_id: f'/pdf/{paper_id}', publisher_links=links).build(self.report)
+        self.assertEqual(validator('search').errors({'result': result} | self.envelope()), [])
+        by_title = {paper['title']: paper['full_text']['publisher_link'] for paper in result['papers']}
+        self.assertEqual(
+            by_title['Filed'], {'url': 'https://pub.example/pdf/10.1/a', 'kind': 'pdf', 'publisher': 'Example'}
+        )
+        self.assertIsNone(by_title['Linked'])
 
     def test_a_copy_the_site_refused_to_a_program_is_offered_for_a_browser(self):
         result = self.view.build(self.report, include_needs_review=True)
