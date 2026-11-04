@@ -846,7 +846,13 @@ class ResultTests(unittest.TestCase):
         links = [
             {'validation_status': 'verified', 'best_pdf_url': 'https://x/a.pdf', 'version_type': 'publishedVersion'},
             {'validation_status': 'verified', 'best_pdf_url': 'https://x/b.pdf', 'version_type': 'preprint'},
-            {'validation_status': 'unverified'},
+            {
+                'validation_status': 'unverified',
+                'pdf_candidates': [
+                    {'url': 'https://other/b.pdf', 'identity_status': 'conflicting'},
+                    {'url': 'https://dl.acm.org/doi/pdf/10.1/c', 'identity_status': 'verified'},
+                ],
+            },
             {},
         ]
         checked = {'format_status': 'valid', 'identity_status': 'verified', 'validation_status': 'verified'}
@@ -884,7 +890,13 @@ class ResultTests(unittest.TestCase):
         filed, linked = result['papers']
         self.assertEqual(
             filed['full_text'],
-            {'status': 'file', 'url': 'https://x/a.pdf', 'version': 'publishedVersion', 'download': '/pdf/0'},
+            {
+                'status': 'file',
+                'url': 'https://x/a.pdf',
+                'version': 'publishedVersion',
+                'download': '/pdf/0',
+                'browser_url': None,
+            },
         )
         # A file outside the run's folder is never served, but the paper keeps its validated link.
         self.assertEqual(linked['full_text']['status'], 'link')
@@ -916,6 +928,13 @@ class ResultTests(unittest.TestCase):
         result = self.view.build(self.report, include_needs_review=True)
         self.assertEqual(result['papers'][-1]['ownership_status'], 'needs_review')
         self.assertEqual(result['papers'][-1]['full_text']['status'], 'none')
+
+    def test_a_copy_the_site_refused_to_a_program_is_offered_for_a_browser(self):
+        result = self.view.build(self.report, include_needs_review=True)
+        self.assertEqual(validator('search').errors({'result': result} | self.envelope()), [])
+        unsure = result['papers'][-1]['full_text']
+        self.assertEqual((unsure['status'], unsure['browser_url']), ('none', 'https://dl.acm.org/doi/pdf/10.1/c'))
+        self.assertIsNone(result['papers'][0]['full_text']['browser_url'])
 
     def test_candidates_carry_every_selection(self):
         identity = {
