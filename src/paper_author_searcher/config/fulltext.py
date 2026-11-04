@@ -88,7 +88,7 @@ class PDFConfig:
     # Web search (the provider chosen by DiscoveryConfig.web_search) for verified papers still without a PDF once
     # every source above has answered. Works are searched newest first, each once, up to this many per run; 0 disables
     # it. A hit is only ever a candidate: the downloaded file's own title and authors decide (pdf_file_validation).
-    web_search_maximum_papers: int = 25
+    web_search_maximum_papers: int = 50
     web_search_results: int = 10
     web_search_query: str = '{title} {authors}'
     web_search_query_authors: int = 3
