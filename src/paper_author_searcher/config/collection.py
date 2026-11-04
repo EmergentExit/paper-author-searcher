@@ -111,6 +111,21 @@ class OwnershipConfig:
     namesake_unproven_sources: tuple[str, ...] = ('dblp', 'arxiv')
     namesake_group_minimum_papers: int = 2
     namesake_group_maximum_coauthors: int = 12
+    # Venues anyone can post to (normalized words), which link no group of papers to another: an identity found by name
+    # and school alone keeps a separate group only through a journal or conference it shares with the school's group.
+    unplaced_group_open_venues: tuple[str, ...] = (
+        'corr',
+        'arxiv',
+        'biorxiv',
+        'medrxiv',
+        'chemrxiv',
+        'ssrn',
+        'repec',
+        'zenodo',
+        'figshare',
+        'research square',
+        'national bureau of economic research',
+    )
     # An identity listing more institutions than this is a merge of several people (OpenAlex filed many Wei Lus,
     # 89 institutions, under one ORCID-bearing author ID), so its history vouches for nobody.
     maximum_history_institutions: int = 12
