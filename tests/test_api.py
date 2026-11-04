@@ -210,6 +210,21 @@ class RouteTests(unittest.TestCase):
         done = api.call('POST', '/v1/searches', dict(REQUEST, name='Someone Else'))
         self.assertEqual(api.call('POST', done.body['links']['self'] + '/cancel').status, 409)
 
+    def test_held_papers_are_shown_only_when_the_caller_asks(self):
+        api = self.harness()
+        held = dict(RESULT['papers'][0], id='9', title='Maybe theirs', ownership_status='needs_review')
+        api.core.runner.outcomes.append(
+            SearchOutcome(JobStatus.SUCCEEDED, result=dict(RESULT, papers=[*RESULT['papers'], held]))
+        )
+        created = api.call('POST', '/v1/searches', REQUEST)
+        shown = api.call('GET', created.body['links']['self'])
+        self.assertNotIn('Maybe theirs', [paper['title'] for paper in shown.body['result']['papers']])
+        asked = api.call('GET', created.body['links']['self'] + '?include_needs_review=true')
+        self.assertIn('Maybe theirs', [paper['title'] for paper in asked.body['result']['papers']])
+        self.assertSchema('search', asked.body)
+        other = api.call('GET', created.body['links']['self'] + '?include_needs_review=no')
+        self.assertEqual(other.body['result'], shown.body['result'])
+
     def test_other_callers_cannot_see_a_job(self):
         api = self.harness()
         api.core.runner.outcomes.append(api.succeed())

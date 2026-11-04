@@ -19,6 +19,7 @@ from paper_author_searcher.workflow import load_checkpoint
 
 from .model import Job, JobStatus
 from .ports import Progress, SearchOutcome
+from .publisher_links import PublisherLinks
 from .results import ResultView, candidates
 
 logger = logging.getLogger(__name__)
@@ -192,6 +193,7 @@ class WorkflowRunner:
             service.strong_ownership_evidence,
             service.supporting_ownership_evidence,
             service.maximum_paper_evidence,
+            PublisherLinks.from_config(service.publisher_pdf_links, service.doi_page_template),
         )
         result = view.build(report)
         files = {}

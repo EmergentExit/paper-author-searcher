@@ -57,7 +57,7 @@ paper-search-api serve --port 8080 --workers 1 --max-cost-usd 0.5
 | 方法与路径 | 作用 | 成功 |
 |---|---|---|
 | `POST /v1/searches` | 提交搜索（请求体见 `search-request`） | 202，返回任务，`Location` 指向它 |
-| `GET /v1/searches/{id}` | 任务状态、进度、候选名单、结果 | 200 |
+| `GET /v1/searches/{id}` | 任务状态、进度、候选名单、结果；加 `?include_needs_review=true` 时也返回待复核的论文 | 200 |
 | `POST /v1/searches/{id}/confirmation` | 在 `needs_confirmation` 时选定一个候选 | 202，任务重新排队 |
 | `POST /v1/searches/{id}/cancel` | 结束搜索：排队中、运行中、等待确认时都可以 | 200，状态变为 `cancelled`；已完成的搜索返回 409 |
 | `GET /v1/searches/{id}/papers/{pid}/pdf` | 下载结果中某篇论文已核对的 PDF | 200，`application/pdf` |
@@ -118,6 +118,10 @@ POST /v1/searches/srch_…/confirmation
 - `file`：已下载，且确认是这篇论文，可从 `download` 路径取回；
 - `link`：有一个验证过的开放获取链接；
 - `none`：两者都没有。
+
+另外两个链接给人在浏览器里打开，服务自己不访问：
+- `browser_url`：确认属于这篇论文、但网站不让程序下载（机器人验证）的副本；
+- `publisher_link`：按 DOI 生成的出版商链接。`kind` 为 `pdf` 时是出版商自己的 PDF 地址，例如 ACM 的 `https://dl.acm.org/doi/pdf/<DOI>`，在浏览器里可以免费看，但开放获取数据库把它记成不开放；为 `page` 时是 DOI 的落地页，能否下载由出版商决定。规则在 `ServiceConfig.publisher_pdf_links` 和 `doi_page_template` 里配置。
 
 ## Schema 版本
 
