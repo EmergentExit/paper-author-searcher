@@ -11,7 +11,7 @@
     "id": {"type": "string"},
     "status": {
       "description": "queued -> running -> succeeded | failed | needs_confirmation; a confirmation queues it again.",
-      "enum": ["queued", "running", "needs_confirmation", "succeeded", "failed"]
+      "enum": ["queued", "running", "needs_confirmation", "succeeded", "failed", "cancelled"]
     },
     "created_at": {"type": "string"},
     "updated_at": {"type": "string"},

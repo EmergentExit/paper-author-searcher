@@ -14,6 +14,8 @@ from typing import Any
 
 from .agent import agent_view
 from .model import (
+    CANCELLED_ERROR,
+    STOPPABLE,
     ErrorKind,
     IdempotencyConflict,
     Job,
@@ -21,6 +23,7 @@ from .model import (
     ServiceError,
     SubmissionLimits,
     checked_file_ids,
+    now,
     seconds_since,
 )
 from .ports import FileStore, JobRepository, StoredFile
@@ -103,6 +106,27 @@ class SearchService:
             return queued
 
         return self._idempotent(client, idempotency_key, ('confirm', job_id, selection), queue)
+
+    def cancel(self, client: str, job_id: str) -> Job:
+        """Stop a search wherever it is: queued, running or waiting for a candidate. A running search's worker
+        notices within seconds, refuses every further request and discards what the run found."""
+        for _ in range(3):
+            job = self.job(client, job_id)
+            if job.status == JobStatus.CANCELLED:
+                return job
+            if job.status not in STOPPABLE:
+                raise ServiceError(ErrorKind.CONFLICT, 'already_finished', f'The search is {job.status}')
+            stopped = self.repository.transition(
+                job.id,
+                job.status,
+                status=JobStatus.CANCELLED,
+                progress=None,
+                finished_at=now(),
+                error=dict(CANCELLED_ERROR),
+            )
+            if stopped is not None:
+                return stopped
+        raise ServiceError(ErrorKind.CONFLICT, 'busy', 'The search changed while it was being stopped; try again')
 
     # Queries
 

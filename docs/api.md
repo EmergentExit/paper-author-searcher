@@ -59,6 +59,7 @@ paper-search-api serve --port 8080 --workers 1 --max-cost-usd 0.5
 | `POST /v1/searches` | 提交搜索（请求体见 `search-request`） | 202，返回任务，`Location` 指向它 |
 | `GET /v1/searches/{id}` | 任务状态、进度、候选名单、结果 | 200 |
 | `POST /v1/searches/{id}/confirmation` | 在 `needs_confirmation` 时选定一个候选 | 202，任务重新排队 |
+| `POST /v1/searches/{id}/cancel` | 结束搜索：排队中、运行中、等待确认时都可以 | 200，状态变为 `cancelled`；已完成的搜索返回 409 |
 | `GET /v1/searches/{id}/papers/{pid}/pdf` | 下载结果中某篇论文已核对的 PDF | 200，`application/pdf` |
 | `GET /v1/searches/{id}/pdfs.zip` | 结果中所有已核对 PDF 的 zip | 200，`application/zip` |
 | `GET /v1/searches/{id}/agent` | 给 cold-email agent 的视图：可以引用的论文和被扣下的论文（见 [输出契约](agent-contract.md)） | 200 |
@@ -76,7 +77,10 @@ paper-search-api serve --port 8080 --workers 1 --max-cost-usd 0.5
 queued → running → succeeded
                  → failed
                  → needs_confirmation --(confirmation)--> queued → running → …
+queued / running / needs_confirmation --(cancel)--> cancelled
 ```
+
+- `cancelled`：搜索的主人结束了它。运行中的搜索在几秒内停止：之后的请求都不再发出，已找到的结果也不保留。`error.code` 为 `cancelled`。
 
 - `running` 时，`progress` 给出当前阶段，以及已完成数和总数（论文级计数）。
 - `succeeded`：返回 `result`，包含身份、论文列表和统计。`run_status` 为 `partial`，表示部分来源出错，或有文件待审。

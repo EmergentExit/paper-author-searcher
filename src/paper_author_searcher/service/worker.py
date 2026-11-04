@@ -51,6 +51,7 @@ class SearchWorker:
         maximum_attempts: int = 0,
         housekeeping: Callable[[], Any] | None = None,
         housekeeping_seconds: float = 6 * 3600.0,
+        cancel_poll_seconds: float = 2.0,
     ) -> None:
         self.repository = repository
         self.runner = runner
@@ -64,6 +65,8 @@ class SearchWorker:
         self.maximum_attempts = maximum_attempts
         self.housekeeping = housekeeping
         self.housekeeping_seconds = housekeeping_seconds
+        # How often a running job's status is read, so a search its owner stopped ends within about this long.
+        self.cancel_poll_seconds = cancel_poll_seconds
         self._last_housekeeping = 0.0
         self.id = worker_id or f'{socket.gethostname()}-{secrets.token_hex(4)}'
         self.stopping = threading.Event()
@@ -129,7 +132,8 @@ class SearchWorker:
         outcome: SearchOutcome | None = None
         # A beat of its own while the job runs: one slow step (a large download) must not look like a dead worker.
         done = threading.Event()
-        beat = threading.Thread(target=self._beat, args=(job.id, done), name=f'heartbeat-{job.id}', daemon=True)
+        stop = threading.Event()
+        beat = threading.Thread(target=self._beat, args=(job.id, done, stop), name=f'heartbeat-{job.id}', daemon=True)
         beat.start()
         try:
             checkpoint = None
@@ -137,12 +141,16 @@ class SearchWorker:
                 checkpoint = work / 'identity.json'
                 if not self.files.fetch(job.identity_checkpoint, checkpoint):
                     raise RuntimeError('The identity checkpoint of this search is missing from the file store')
-            outcome = self.runner.run(job, checkpoint, progress)
-            self._finish(job.id, outcome, job.cost_usd, job.llm_cost_usd)
+            outcome = self.runner.run(job, checkpoint, progress, stop)
+            if stop.is_set() or self._cancelled(job.id):
+                logger.info('Search %s stopped by its owner', job.id)
+            else:
+                self._finish(job.id, outcome, job.cost_usd, job.llm_cost_usd)
         except Exception as exc:
             logger.exception('Search %s failed', job.id)
-            self.repository.update(
+            self.repository.transition(
                 job.id,
+                JobStatus.RUNNING,
                 status=JobStatus.FAILED,
                 progress=None,
                 finished_at=now(),
@@ -186,7 +194,10 @@ class SearchWorker:
             changes['candidates'] = outcome.candidates
         if checkpoint_key:
             changes['identity_checkpoint'] = checkpoint_key
-        self.repository.update(job_id, **changes)
+        # Only a job still running takes the outcome: one stopped meanwhile stays stopped.
+        if self.repository.transition(job_id, JobStatus.RUNNING, **changes) is None:
+            logger.info('Search %s was stopped before its outcome was recorded', job_id)
+            return
         logger.info('Search %s finished as %s ($%.4f)', job_id, outcome.status, outcome.cost_usd)
 
     def _archive(self, job_id: str, files: dict[str, Path]) -> Path:
@@ -202,12 +213,28 @@ class SearchWorker:
         self.scratch.mkdir(parents=True, exist_ok=True)
         return self.scratch
 
-    def _beat(self, job_id: str, done: threading.Event) -> None:
-        while not done.wait(self.heartbeat_seconds):
+    def _beat(self, job_id: str, done: threading.Event, stop: threading.Event | None = None) -> None:
+        """Report alive every heartbeat; in between, notice the owner stopping the job and set ``stop``."""
+        last_beat = time.monotonic()
+        while not done.wait(min(self.heartbeat_seconds, self.cancel_poll_seconds)):
+            if stop is not None and not stop.is_set() and self._cancelled(job_id):
+                logger.info('Search %s is being stopped', job_id)
+                stop.set()
+            if time.monotonic() - last_beat < self.heartbeat_seconds:
+                continue
+            last_beat = time.monotonic()
             try:
                 self.repository.heartbeat(self.id, job_id)
             except Exception:
                 logger.exception('Heartbeat of worker %s failed', self.id)
+
+    def _cancelled(self, job_id: str) -> bool:
+        try:
+            job = self.repository.get(job_id)
+        except Exception:
+            logger.exception('Status of search %s could not be read', job_id)
+            return False
+        return job is not None and job.status == JobStatus.CANCELLED
 
     def _heartbeat(self, job_id: str | None, force: bool = False) -> None:
         moment = time.monotonic()
