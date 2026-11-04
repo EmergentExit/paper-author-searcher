@@ -26,6 +26,7 @@ from http import HTTPStatus
 from importlib import resources
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 from paper_author_searcher.service.facade import SearchService
 from paper_author_searcher.service.metrics import RequestCounter, render
@@ -47,6 +48,10 @@ STATUS_OF: dict[str, int] = {
     ErrorKind.IDEMPOTENCY_IN_PROGRESS: 409,
     ErrorKind.RATE_LIMITED: 429,
 }
+
+# The request field and the query parameter that ask for needs-review papers in a result.
+INCLUDE_NEEDS_REVIEW = 'include_needs_review'
+TRUE_VALUES = frozenset({'1', 'true', 'yes'})
 
 
 def page() -> Path:
@@ -196,8 +201,11 @@ class SearchAPI:
         submission = self.service.submit(key.id, body, self._idempotency_key(request))
         return self._accepted(submission.job, submission.replayed)
 
-    def _show(self, _: Request, key: ApiKey, params: dict[str, str]) -> Response:
-        return Response(200, resource(self.service.job(key.id, params['id'])))
+    def _show(self, request: Request, key: ApiKey, params: dict[str, str]) -> Response:
+        # ?include_needs_review=true shows held papers too, whatever the search request asked (the web page does).
+        wanted = parse_qs(urlsplit(request.path).query).get(INCLUDE_NEEDS_REVIEW, [])
+        include = True if any(value.lower() in TRUE_VALUES for value in wanted) else None
+        return Response(200, resource(self.service.job(key.id, params['id']), include))
 
     def _confirm(self, request: Request, key: ApiKey, params: dict[str, str]) -> Response:
         body = self._body(request, 'confirmation-request')
@@ -258,8 +266,8 @@ def link(job: Job) -> str:
     return f'/v1/searches/{job.id}'
 
 
-def resource(job: Job) -> dict[str, Any]:
-    """The job as schema v1 ``search``."""
+def resource(job: Job, include_needs_review: bool | None = None) -> dict[str, Any]:
+    """The job as schema v1 ``search``; ``include_needs_review`` overrides the request's own choice."""
     body: dict[str, Any] = {
         'api_version': API_VERSION,
         'id': job.id,
@@ -276,7 +284,8 @@ def resource(job: Job) -> dict[str, Any]:
     if job.status == JobStatus.NEEDS_CONFIRMATION:
         body['links']['confirmation'] = link(job) + '/confirmation'
     if job.status == JobStatus.SUCCEEDED and job.result is not None:
-        body['result'] = ResultView.visible(job.result, bool(job.request.get('include_needs_review')))
+        include = bool(job.request.get(INCLUDE_NEEDS_REVIEW)) if include_needs_review is None else include_needs_review
+        body['result'] = ResultView.visible(job.result, include)
     if job.status == JobStatus.FAILED and job.error is not None:
         body['error'] = job.error
     return body

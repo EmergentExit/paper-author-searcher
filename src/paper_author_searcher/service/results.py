@@ -15,6 +15,8 @@ from paper_author_searcher.status import (
     RunStatus,
 )
 
+from .publisher_links import PublisherLinks
+
 MAXIMUM_EVIDENCE = 5
 # Warnings about the whole result that a caller should see, as opposed to one paper's lookup details.
 NOTICE_CODES = {WEB_SEARCH_OFF}
@@ -74,8 +76,11 @@ class ResultView:
         strong_evidence: tuple[str, ...] = (),
         supporting_evidence: tuple[str, ...] = (),
         maximum_evidence: int = 3,
+        publisher_links: PublisherLinks | None = None,
     ) -> None:
         self.download_link = download_link
+        # Where the person can open each paper at its publisher; None leaves that out.
+        self.publisher_links = publisher_links
         # Findings that make a verified paper 'high' confidence, and the other findings worth showing.
         self.strong_evidence = strong_evidence
         self.supporting_evidence = supporting_evidence
@@ -227,8 +232,13 @@ class ResultView:
                 'version': (file.get('version_type') if checked else link.get('version_type')) if url else None,
                 'download': self.download_link(paper_id) if checked else None,
                 'browser_url': None if url else self._browser_url(link),
+                'publisher_link': self._publisher_link(entry.get('doi')),
             },
         }
+
+    def _publisher_link(self, doi: Any) -> dict[str, str | None] | None:
+        found = self.publisher_links.for_doi(doi) if self.publisher_links and isinstance(doi, str) else None
+        return found.to_dict() if found else None
 
     @staticmethod
     def _browser_url(link: dict[str, Any]) -> str | None:

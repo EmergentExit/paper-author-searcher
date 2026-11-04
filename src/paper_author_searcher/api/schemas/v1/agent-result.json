@@ -81,6 +81,17 @@
             "browser_url": {
               "description": "Status none: a link tied to this paper that the site refused to a program; it usually opens in a browser.",
               "type": ["string", "null"]
+            },
+            "publisher_link": {
+              "description": "Where a person can open the paper at its publisher, from its DOI; the service never fetches it. kind pdf: the publisher's PDF address (free to read in a browser at publishers such as ACM); kind page: the DOI's landing page, where the publisher decides what a reader gets.",
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["url", "kind", "publisher"],
+              "properties": {
+                "url": {"type": "string"},
+                "kind": {"enum": ["pdf", "page"]},
+                "publisher": {"type": ["string", "null"]}
+              }
             }
           }
         },

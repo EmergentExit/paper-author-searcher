@@ -44,6 +44,7 @@
   th, td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: top; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; border-top: 0; }
   td.year { white-space: nowrap; color: var(--muted); }
+  td:last-child a { white-space: nowrap; }
   .chip { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--chip); }
   .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
   .candidate { border-top: 1px solid var(--line); padding: 12px 0; }
@@ -89,6 +90,14 @@
       <thead><tr><th>年份</th><th>论文</th><th class="venue">发表于</th><th>原文</th></tr></thead>
       <tbody id="papers"></tbody>
     </table>
+    <details class="hidden" id="held">
+      <summary><span id="held-count"></span> 篇待确认的论文</summary>
+      <p class="muted">系统不能确定这些是不是本人的论文（可能是同名的人），所以没有替它们查找和下载原文。下面的链接只是按 DOI 指向出版商，请自己判断。</p>
+      <table>
+        <thead><tr><th>年份</th><th>论文</th><th class="venue">发表于</th><th>原文</th></tr></thead>
+        <tbody id="held-papers"></tbody>
+      </table>
+    </details>
   </section>
 </main>
 <script>
@@ -257,65 +266,102 @@
     if (folded) list.append(folded);
   }
 
+  function newTabLink(href, label, hint) {
+    const link = document.createElement('a');
+    link.href = href; link.target = '_blank'; link.rel = 'noopener'; link.textContent = label;
+    if (hint) link.title = hint;
+    return link;
+  }
+
+  // The best way to read a paper, most direct first: a checked file, an open link, a copy a site keeps from
+  // programs, then the publisher's own address for its DOI.
+  function fullTextCell(paper) {
+    const full = paper.full_text;
+    const cell = document.createElement('td');
+    if (full.status === 'file') {
+      const button = document.createElement('button');
+      button.className = 'secondary';
+      button.textContent = '下载 PDF';
+      button.onclick = () => download(full.download, `${paper.year || ''}_${paper.title}`.slice(0, 120) + '.pdf').catch((e) => alert(e.message));
+      cell.append(button);
+    } else if (full.status === 'link') {
+      cell.append(newTabLink(full.url, '打开链接'));
+    } else if (full.browser_url) {
+      cell.append(newTabLink(full.browser_url, '去网站打开', '这个链接确认是这篇论文，但网站不让程序下载（机器人验证）。在你的浏览器里打开通常可以免费下载。'));
+    } else if (full.publisher_link && full.publisher_link.kind === 'pdf') {
+      const publisher = full.publisher_link.publisher || '出版商';
+      cell.append(newTabLink(full.publisher_link.url, `去 ${publisher} 下载`, `${publisher} 网站上这篇论文的 PDF，在浏览器里打开。`));
+    } else if (full.publisher_link) {
+      cell.append(newTabLink(full.publisher_link.url, '出版商页面', '论文在出版商网站的页面，能否免费下载以页面为准。'));
+    } else {
+      cell.innerHTML = '<span class="chip">无公开原文</span>';
+    }
+    return cell;
+  }
+
+  function paperRow(paper) {
+    const row = document.createElement('tr');
+    row.innerHTML = '<td class="year"></td><td></td><td class="venue muted"></td>';
+    const [year, title, venue] = row.children;
+    year.textContent = paper.year ?? '';
+    title.textContent = paper.title;
+    if (paper.ownership_status !== 'verified') {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.style.marginLeft = '6px';
+      chip.textContent = '待确认';
+      title.append(chip);
+    }
+    if (paper.editions && paper.editions.length) {
+      const more = document.createElement('div');
+      more.className = 'muted';
+      more.textContent = '另有版本：' + paper.editions.map((edition) => edition.venue || edition.year || '').filter(Boolean).join('，');
+      title.append(more);
+    }
+    venue.textContent = paper.venue ?? '';
+    row.append(fullTextCell(paper));
+    return row;
+  }
+
+  function fillTable(body, papers) {
+    body.replaceChildren(...papers.map(paperRow));
+  }
+
   function renderResult(job) {
     const result = job.result;
-    const stats = result.statistics;
+    // Held papers come with the result (?include_needs_review=true) but are counted and listed apart.
+    const confirmed = result.papers.filter((paper) => paper.ownership_status === 'verified');
+    const held = result.papers.filter((paper) => paper.ownership_status !== 'verified');
     const noticeText = {web_search_off: '未启用网页搜索（没有配置搜索密钥），只存放在作者主页或其他网站上的 PDF 找不到，全文覆盖率会降低。'};
     $('notices').textContent = (result.notices || []).map((notice) => noticeText[notice.code] || notice.message).join(' ');
     $('stats').innerHTML = '';
-    const browserOnly = result.papers.filter((paper) => paper.full_text.status === 'none' && paper.full_text.browser_url).length;
-    for (const [label, value] of [['篇论文', stats.papers], ['篇有 PDF', stats.full_text_files], ['篇只有在线链接', stats.full_text_links], ['篇需在浏览器打开', browserOnly]]) {
+    const count = (test) => confirmed.filter((paper) => test(paper.full_text)).length;
+    const files = count((full) => full.status === 'file');
+    for (const [label, value] of [
+      ['篇论文', confirmed.length],
+      ['篇有 PDF', files],
+      ['篇只有在线链接', count((full) => full.status === 'link')],
+      ['篇需在浏览器打开', count((full) => full.status === 'none' && (full.browser_url || full.publisher_link))],
+    ]) {
       const cell = document.createElement('div');
       cell.innerHTML = '<b></b><span class="muted"></span>';
       cell.querySelector('b').textContent = value;
       cell.querySelector('span').textContent = label;
       $('stats').append(cell);
     }
-    $('zip').disabled = !stats.full_text_files;
+    $('zip').disabled = !files;
     $('zip').onclick = () => download(`/v1/searches/${job.id}/pdfs.zip`, `${result.identity.name || 'papers'}-pdfs.zip`).catch((e) => alert(e.message));
     $('zip-note').textContent = result.run_status === 'partial' ? '部分来源这次没有响应，结果可能不完整。' : '';
-    const rows = $('papers');
-    rows.replaceChildren();
-    for (const paper of result.papers) {
-      const row = document.createElement('tr');
-      row.innerHTML = '<td class="year"></td><td></td><td class="venue muted"></td><td></td>';
-      const [year, title, venue, text] = row.children;
-      year.textContent = paper.year ?? '';
-      title.textContent = paper.title;
-      if (paper.editions && paper.editions.length) {
-        const more = document.createElement('div');
-        more.className = 'muted';
-        more.textContent = '另有版本：' + paper.editions.map((edition) => edition.venue || edition.year || '').filter(Boolean).join('，');
-        title.append(more);
-      }
-      venue.textContent = paper.venue ?? '';
-      const full = paper.full_text;
-      if (full.status === 'file') {
-        const button = document.createElement('button');
-        button.className = 'secondary';
-        button.textContent = '下载 PDF';
-        button.onclick = () => download(full.download, `${paper.year || ''}_${paper.title}`.slice(0, 120) + '.pdf').catch((e) => alert(e.message));
-        text.append(button);
-      } else if (full.status === 'link') {
-        const link = document.createElement('a');
-        link.href = full.url; link.target = '_blank'; link.rel = 'noopener'; link.textContent = '打开链接';
-        text.append(link);
-      } else if (full.browser_url) {
-        const link = document.createElement('a');
-        link.href = full.browser_url; link.target = '_blank'; link.rel = 'noopener'; link.textContent = '去网站打开';
-        link.title = '这个链接确认是这篇论文，但网站不让程序下载（机器人验证）。在你的浏览器里打开通常可以免费下载。';
-        text.append(link);
-      } else {
-        text.innerHTML = '<span class="chip">无公开原文</span>';
-      }
-      rows.append(row);
-    }
+    fillTable($('papers'), confirmed);
+    show('held', held.length > 0);
+    $('held-count').textContent = held.length;
+    fillTable($('held-papers'), held);
   }
 
   async function poll(id) {
     clearTimeout(timer);
     try {
-      const job = await api('GET', '/v1/searches/' + id);
+      const job = await api('GET', `/v1/searches/${id}?include_needs_review=true`);
       render(job);
       if (job.status === 'queued' || job.status === 'running') timer = setTimeout(() => poll(id), 3000);
     } catch (error) {

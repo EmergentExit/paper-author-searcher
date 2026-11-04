@@ -107,6 +107,12 @@ class ServiceConfig:
         'Explicit target Author ID and compatible byline under a name no other author holds in the source',
     )
     maximum_paper_evidence: int = 3
+    # A link for the person to open each paper at its publisher (service/publisher_links). A DOI starting with a
+    # rule's prefix gets that publisher's PDF address, (DOI prefix, publisher name, template with {doi}); ACM serves
+    # every paper there, free to read in a browser though indexes call it closed. Any other DOI gets doi_page_template
+    # (empty: no link). The service never fetches these addresses.
+    publisher_pdf_links: tuple[tuple[str, str, str], ...] = (('10.1145/', 'ACM', 'https://dl.acm.org/doi/pdf/{doi}'),)
+    doi_page_template: str = 'https://doi.org/{doi}'
 
     def __post_init__(self) -> None:
         if self.file_store not in FILE_STORES:
@@ -132,6 +138,11 @@ class ServiceConfig:
                 raise ValueError(f'{name} must be positive')
         if self.stale_after_seconds <= self.heartbeat_seconds:
             raise ValueError('stale_after_seconds must exceed heartbeat_seconds')
+        templates = [template for *_, template in self.publisher_pdf_links]
+        if self.doi_page_template:
+            templates.append(self.doi_page_template)
+        if any('{doi}' not in template for template in templates):
+            raise ValueError('publisher_pdf_links and doi_page_template need {doi} in each address')
         for name in (
             'maximum_search_seconds',
             'maximum_active_searches',
