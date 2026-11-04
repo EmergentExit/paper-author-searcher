@@ -66,6 +66,7 @@
       <label>姓名<input name="name" required maxlength="200" placeholder="例如 Julie Kallini" autocomplete="off"></label>
       <label>学校<input name="university" required maxlength="300" placeholder="例如 Stanford University" autocomplete="off"></label>
       <label class="full">院系（可选，填写后同名者更少）<input name="department" maxlength="300" placeholder="例如 Computer Science" autocomplete="off"></label>
+      <label class="full">以前的学校（可选，读博、博后或以前任职的学校，多个用逗号分隔；填写后这些学校时期的论文也能找回）<input name="previous" maxlength="1000" placeholder="例如 Stanford University, Princeton University" autocomplete="off"></label>
       <label class="full hidden" id="key-field">API 密钥（只需填写一次，保存在本浏览器）<input name="key" type="password" autocomplete="off"></label>
       <div class="full row"><button type="submit" id="go">搜索</button><span class="muted" id="hint">一次搜索通常需要几分钟到几十分钟，可以离开页面稍后再回来。</span></div>
     </form>
@@ -377,6 +378,8 @@
     if (!key()) { $('key-field').classList.remove('hidden'); form.key.focus(); return; }
     const body = { name: form.name.value.trim(), university: form.university.value.trim(), mode: 'full' };
     if (form.department.value.trim()) body.department = form.department.value.trim();
+    const previous = form.previous.value.split(/[,，;；]/).map((school) => school.trim()).filter(Boolean);
+    if (previous.length) body.hints = { previous_universities: previous };
     $('go').disabled = true;
     show('result', false); show('confirm', false);
     try {
