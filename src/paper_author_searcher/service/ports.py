@@ -7,6 +7,7 @@
 The service core (facade, worker) depends only on these; HTTP, SQLite, S3 and the workflow are swappable.
 """
 
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -95,4 +96,12 @@ class SearchOutcome:
 
 
 class SearchRunner(Protocol):
-    def run(self, job: Job, identity_checkpoint: Path | None, progress: Progress) -> SearchOutcome: ...
+    def run(
+        self,
+        job: Job,
+        identity_checkpoint: Path | None,
+        progress: Progress,
+        stop: threading.Event | None = None,
+    ) -> SearchOutcome:
+        """``stop`` is set when the job's owner stops it: the run then refuses every further request and ends."""
+        ...

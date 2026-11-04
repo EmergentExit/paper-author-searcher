@@ -41,7 +41,7 @@ def agent_view(job: Job) -> dict[str, Any]:
     if job.status != JobStatus.SUCCEEDED or not job.result:
         if job.status == JobStatus.NEEDS_CONFIRMATION:
             view['notes'].append('Namesakes could not be told apart; confirm the person before using any paper')
-        if job.status == JobStatus.FAILED and job.error:
+        if job.status in (JobStatus.FAILED, JobStatus.CANCELLED) and job.error:
             view['notes'].append(job.error.get('message', 'The search failed'))
         return view
     result = job.result
@@ -82,6 +82,7 @@ STATUS_OF: dict[str, str] = {
     JobStatus.NEEDS_CONFIRMATION: 'needs_confirmation',
     JobStatus.FAILED: 'failed',
     JobStatus.SUCCEEDED: 'ready',
+    JobStatus.CANCELLED: 'cancelled',
 }
 
 

@@ -119,6 +119,7 @@ class SearchAPI:
             ('POST', 'create', re.compile(r'^/v1/searches$'), self._create),
             ('GET', 'show', re.compile(r'^/v1/searches/(?P<id>[\w-]+)$'), self._show),
             ('POST', 'confirm', re.compile(r'^/v1/searches/(?P<id>[\w-]+)/confirmation$'), self._confirm),
+            ('POST', 'cancel', re.compile(r'^/v1/searches/(?P<id>[\w-]+)/cancel$'), self._cancel),
             ('GET', 'pdf', re.compile(r'^/v1/searches/(?P<id>[\w-]+)/papers/(?P<paper>\d+)/pdf$'), self._pdf),
             ('GET', 'zip', re.compile(r'^/v1/searches/(?P<id>[\w-]+)/pdfs\.zip$'), self._archive),
             ('GET', 'agent', re.compile(r'^/v1/searches/(?P<id>[\w-]+)/agent$'), self._agent),
@@ -202,6 +203,9 @@ class SearchAPI:
         body = self._body(request, 'confirmation-request')
         submission = self.service.confirm(key.id, params['id'], body['selection'], self._idempotency_key(request))
         return self._accepted(submission.job, submission.replayed)
+
+    def _cancel(self, _: Request, key: ApiKey, params: dict[str, str]) -> Response:
+        return Response(200, resource(self.service.cancel(key.id, params['id'])))
 
     def _agent(self, _: Request, key: ApiKey, params: dict[str, str]) -> Response:
         return Response(200, self.service.agent_view(key.id, params['id']))

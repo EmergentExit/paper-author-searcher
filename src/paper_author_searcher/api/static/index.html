@@ -71,7 +71,7 @@
   </section>
 
   <section class="panel hidden" id="job">
-    <div class="row"><span class="status" id="status"></span><span class="muted" id="who"></span></div>
+    <div class="row"><span class="status" id="status"></span><span class="muted" id="who"></span><button type="button" class="secondary hidden" id="stop" style="margin-left:auto">结束搜索</button></div>
     <div class="muted" id="detail"></div>
     <div class="bar" id="bar"><div></div></div>
   </section>
@@ -98,7 +98,7 @@
     'Deduplicating papers': '合并重复', 'Validating ownership': '核对论文归属', 'Finding PDF URLs': '查找原文链接',
     'Downloading PDFs': '下载并核对 PDF', 'Generating report': '整理结果', 'Reusing collected papers': '复用已收集的论文',
   };
-  const STATUS = { queued: '排队中', running: '搜索中', needs_confirmation: '需要你确认', succeeded: '完成', failed: '失败' };
+  const STATUS = { queued: '排队中', running: '搜索中', needs_confirmation: '需要你确认', succeeded: '完成', failed: '失败', cancelled: '已结束' };
   const store = {
     get(name) { try { return localStorage.getItem(name); } catch { return null; } },
     set(name, value) { try { value === null ? localStorage.removeItem(name) : localStorage.setItem(name, value); } catch {} },
@@ -167,6 +167,22 @@
     if (job.status === 'needs_confirmation') renderCandidates(job);
     if (job.status === 'succeeded') renderResult(job);
     $('go').disabled = job.status === 'queued' || job.status === 'running';
+    const stoppable = ['queued', 'running', 'needs_confirmation'].includes(job.status);
+    show('stop', stoppable);
+    $('stop').disabled = false;
+    $('stop').onclick = async () => {
+      if (!confirm('确定结束这次搜索吗？已找到的结果不会保留。')) return;
+      $('stop').disabled = true;
+      try {
+        const stopped = await api('POST', `/v1/searches/${job.id}/cancel`);
+        clearTimeout(timer);
+        render(stopped);
+      } catch (error) {
+        $('stop').disabled = false;
+        alert(error.message);
+      }
+    };
+    if (job.status === 'cancelled') $('detail').textContent = '这次搜索已结束，可以重新搜索。';
   }
 
   // A candidate's profile pages, so the person choosing can see its papers.

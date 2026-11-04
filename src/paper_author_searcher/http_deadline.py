@@ -26,17 +26,30 @@ class TimeLimitReached(SourceError):
 class SearchDeadline:
     """Shared by every client in one run; ``reached`` says whether the limit refused anything."""
 
-    def __init__(self, seconds: float, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self,
+        seconds: float,
+        clock: Callable[[], float] = time.monotonic,
+        stop: threading.Event | None = None,
+    ) -> None:
         if seconds <= 0:
             raise ValueError('seconds must be positive')
         self.seconds = seconds
         self.clock = clock
         self.expires_at = clock() + seconds
         self.reached = False
+        # Set when the search's owner stops it: from then on the run is past its limit at once.
+        self.stop = stop
         self._lock = threading.Lock()
+
+    @property
+    def stopped(self) -> bool:
+        return self.stop is not None and self.stop.is_set()
 
     def expired(self) -> bool:
         """Whether the limit has passed; asking when it has counts as the limit having cut the run short."""
+        if self.stopped:
+            return True
         if self.clock() < self.expires_at:
             return False
         with self._lock:
@@ -46,6 +59,8 @@ class SearchDeadline:
         return True
 
     def check(self) -> None:
+        if self.stopped:
+            raise TimeLimitReached('The search was stopped; request not sent')
         if self.expired():
             raise TimeLimitReached(f'Search time limit of {self.seconds:.0f} s reached; request not sent')
 

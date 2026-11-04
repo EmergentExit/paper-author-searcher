@@ -14,7 +14,7 @@ GET /v1/searches/{id}/agent      Authorization: Bearer <key>
 
 | 字段 | 含义 |
 |---|---|
-| `status` | `ready` 可以使用；`nothing_usable` 已完成但没有可用的论文；`pending` 还在跑；`needs_confirmation` 需要人工从同名者中选定一位；`failed` 失败 |
+| `status` | `ready` 可以使用；`nothing_usable` 已完成但没有可用的论文；`pending` 还在跑；`needs_confirmation` 需要人工从同名者中选定一位；`failed` 失败；`cancelled` 搜索被人结束了 |
 | `usable` | 只有 `papers` 不为空时才是 `true`。agent 只在它为 `true` 时写信 |
 | `researcher.requested` | 调用方请求的姓名、学校、院系 |
 | `researcher.identity` | 系统确认的身份：`confirmed`、`confirmed_by`（`evidence` 表示按证据确认，`caller` 表示由人选定）、姓名、ORCID、各来源的作者 ID、置信度、证据 |
