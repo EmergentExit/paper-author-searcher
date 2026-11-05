@@ -1,7 +1,7 @@
 {
   "dataset_id": "stratified_researchers_v1",
-  "run_id": "ft-oa-fb-ctl",
-  "scored_at": "2026-10-28T21:02:03.081308+00:00",
+  "run_id": "career-chg",
+  "scored_at": "2026-11-04T22:43:15.457377+00:00",
   "run_settings": {
     "mode": "full",
     "timeout": 15,
@@ -15,7 +15,7 @@
     "unpaywall_email": false,
     "bibliography_url": [],
     "verbose": false,
-    "http_cache_dir": "/Users/wangyeyu/Desktop/paper-author-searcher/output/benchmark/http_cache",
+    "http_cache_dir": "/Users/wangyeyu/Desktop/paper-test-must/output/benchmark/http_cache",
     "http_cache_mode": "record",
     "ambiguity_policy": "collect_contenders",
     "settings": null,
@@ -26,17 +26,31 @@
     "fulltext_scope": "window"
   },
   "run_metadata": {
-    "code_version": "7e697086f9bc31846811cf39f8e96ae8ab0773b8",
-    "label": "ft-oa",
-    "replay_of": "dblpfmt-min"
+    "code_version": "360779caa1c6b98c8c6b1287446057f2e631c971",
+    "label": "",
+    "replay_of": "nodblp-ctl-live"
   },
   "gate": {
-    "status": "not_certifiable",
-    "exit_code": 3,
+    "status": "failed",
+    "exit_code": 1,
     "reasons": [
+      "1 of 55 stratum checks failed",
       "32 people are scored against truth that is not human-reviewed"
     ],
-    "failed_checks": [],
+    "failed_checks": [
+      {
+        "stratum": "field=social_science",
+        "metric": "verified_paper_recall",
+        "label": "recall (pooled)",
+        "aggregation": "micro",
+        "observed": 0.6,
+        "minimum": 0.8,
+        "worst_person_rate": 0.0,
+        "people_with_rate": 7,
+        "passed": false,
+        "reason": "below threshold"
+      }
+    ],
     "checks": [
       {
         "stratum": "field=biomedicine",
@@ -55,9 +69,9 @@
         "metric": "verified_paper_recall",
         "label": "recall",
         "aggregation": "macro",
-        "observed": 0.917662058235679,
+        "observed": 0.9229958122906606,
         "minimum": 0.8,
-        "worst_person_rate": 0.8478260869565217,
+        "worst_person_rate": 0.8695652173913043,
         "people_with_rate": 7,
         "passed": true,
         "reason": ""
@@ -67,9 +81,9 @@
         "metric": "verified_paper_recall",
         "label": "recall (pooled)",
         "aggregation": "micro",
-        "observed": 0.9173913043478261,
+        "observed": 0.9217391304347826,
         "minimum": 0.8,
-        "worst_person_rate": 0.8478260869565217,
+        "worst_person_rate": 0.8695652173913043,
         "people_with_rate": 7,
         "passed": true,
         "reason": ""
@@ -79,7 +93,7 @@
         "metric": "author_match_precision",
         "label": "precision",
         "aggregation": "macro",
-        "observed": 0.9834415584415584,
+        "observed": 0.9835286664554957,
         "minimum": 0.95,
         "worst_person_rate": 0.9090909090909091,
         "people_with_rate": 7,
@@ -91,7 +105,7 @@
         "metric": "author_match_precision",
         "label": "precision (pooled)",
         "aggregation": "micro",
-        "observed": 0.985981308411215,
+        "observed": 0.986046511627907,
         "minimum": 0.95,
         "worst_person_rate": 0.9090909090909091,
         "people_with_rate": 7,
@@ -115,9 +129,9 @@
         "metric": "verified_paper_recall",
         "label": "recall",
         "aggregation": "macro",
-        "observed": 0.8713237888693594,
+        "observed": 0.9330735128366203,
         "minimum": 0.8,
-        "worst_person_rate": 0.6716417910447762,
+        "worst_person_rate": 0.8157894736842105,
         "people_with_rate": 8,
         "passed": true,
         "reason": ""
@@ -127,9 +141,9 @@
         "metric": "verified_paper_recall",
         "label": "recall (pooled)",
         "aggregation": "micro",
-        "observed": 0.847255369928401,
+        "observed": 0.9284009546539379,
         "minimum": 0.8,
-        "worst_person_rate": 0.6716417910447762,
+        "worst_person_rate": 0.8157894736842105,
         "people_with_rate": 8,
         "passed": true,
         "reason": ""
@@ -175,9 +189,9 @@
         "metric": "verified_paper_recall",
         "label": "recall",
         "aggregation": "macro",
-        "observed": 0.9304112554112554,
+        "observed": 0.9793831168831169,
         "minimum": 0.8,
-        "worst_person_rate": 0.75,
+        "worst_person_rate": 0.9333333333333333,
         "people_with_rate": 7,
         "passed": true,
         "reason": ""
@@ -187,9 +201,9 @@
         "metric": "verified_paper_recall",
         "label": "recall (pooled)",
         "aggregation": "micro",
-        "observed": 0.970954356846473,
+        "observed": 0.9875518672199171,
         "minimum": 0.8,
-        "worst_person_rate": 0.75,
+        "worst_person_rate": 0.9333333333333333,
         "people_with_rate": 7,
         "passed": true,
         "reason": ""
@@ -226,7 +240,7 @@
         "observed": 1.0,
         "minimum": 1.0,
         "worst_person_rate": 1.0,
-        "people_with_rate": 7,
+        "people_with_rate": 6,
         "passed": true,
         "reason": ""
       },
@@ -235,9 +249,9 @@
         "metric": "verified_paper_recall",
         "label": "recall",
         "aggregation": "macro",
-        "observed": 0.8473564864542309,
+        "observed": 0.8492063492063492,
         "minimum": 0.8,
-        "worst_person_rate": 0.6666666666666666,
+        "worst_person_rate": 0.0,
         "people_with_rate": 7,
         "passed": true,
         "reason": ""
@@ -247,22 +261,22 @@
         "metric": "verified_paper_recall",
         "label": "recall (pooled)",
         "aggregation": "micro",
-        "observed": 0.808695652173913,
+        "observed": 0.6,
         "minimum": 0.8,
-        "worst_person_rate": 0.6666666666666666,
+        "worst_person_rate": 0.0,
         "people_with_rate": 7,
-        "passed": true,
-        "reason": ""
+        "passed": false,
+        "reason": "below threshold"
       },
       {
         "stratum": "field=social_science",
         "metric": "author_match_precision",
         "label": "precision",
         "aggregation": "macro",
-        "observed": 0.9841269841269842,
+        "observed": 1.0,
         "minimum": 0.95,
-        "worst_person_rate": 0.8888888888888888,
-        "people_with_rate": 7,
+        "worst_person_rate": 1.0,
+        "people_with_rate": 6,
         "passed": true,
         "reason": ""
       },
@@ -271,10 +285,10 @@
         "metric": "author_match_precision",
         "label": "precision (pooled)",
         "aggregation": "micro",
-        "observed": 0.9893617021276596,
+        "observed": 1.0,
         "minimum": 0.95,
-        "worst_person_rate": 0.8888888888888888,
-        "people_with_rate": 7,
+        "worst_person_rate": 1.0,
+        "people_with_rate": 6,
         "passed": true,
         "reason": ""
       },
@@ -286,7 +300,7 @@
         "observed": 1.0,
         "minimum": 1.0,
         "worst_person_rate": 1.0,
-        "people_with_rate": 14,
+        "people_with_rate": 13,
         "passed": true,
         "reason": ""
       },
@@ -295,9 +309,9 @@
         "metric": "verified_paper_recall",
         "label": "recall",
         "aggregation": "macro",
-        "observed": 0.8344114716777028,
+        "observed": 0.8719911554156656,
         "minimum": 0.8,
-        "worst_person_rate": 0.6666666666666666,
+        "worst_person_rate": 0.0,
         "people_with_rate": 14,
         "passed": true,
         "reason": ""
@@ -307,9 +321,9 @@
         "metric": "verified_paper_recall",
         "label": "recall (pooled)",
         "aggregation": "micro",
-        "observed": 0.8209876543209876,
+        "observed": 0.8374485596707819,
         "minimum": 0.8,
-        "worst_person_rate": 0.6666666666666666,
+        "worst_person_rate": 0.0,
         "people_with_rate": 14,
         "passed": true,
         "reason": ""
@@ -319,10 +333,10 @@
         "metric": "author_match_precision",
         "label": "precision",
         "aggregation": "macro",
-        "observed": 0.9935064935064934,
+        "observed": 0.9930069930069929,
         "minimum": 0.95,
         "worst_person_rate": 0.9090909090909091,
-        "people_with_rate": 14,
+        "people_with_rate": 13,
         "passed": true,
         "reason": ""
       },
@@ -331,10 +345,10 @@
         "metric": "author_match_precision",
         "label": "precision (pooled)",
         "aggregation": "micro",
-        "observed": 0.9950124688279302,
+        "observed": 0.9951100244498777,
         "minimum": 0.95,
         "worst_person_rate": 0.9090909090909091,
-        "people_with_rate": 14,
+        "people_with_rate": 13,
         "passed": true,
         "reason": ""
       },
@@ -355,9 +369,9 @@
         "metric": "verified_paper_recall",
         "label": "recall",
         "aggregation": "macro",
-        "observed": 0.9437892205450128,
+        "observed": 0.9678539250356355,
         "minimum": 0.8,
-        "worst_person_rate": 0.8333333333333334,
+        "worst_person_rate": 0.8695652173913043,
         "people_with_rate": 15,
         "passed": true,
         "reason": ""
@@ -367,9 +381,9 @@
         "metric": "verified_paper_recall",
         "label": "recall (pooled)",
         "aggregation": "micro",
-        "observed": 0.9518304431599229,
+        "observed": 0.9653179190751445,
         "minimum": 0.8,
-        "worst_person_rate": 0.8333333333333334,
+        "worst_person_rate": 0.8695652173913043,
         "people_with_rate": 15,
         "passed": true,
         "reason": ""
@@ -379,9 +393,9 @@
         "metric": "author_match_precision",
         "label": "precision",
         "aggregation": "macro",
-        "observed": 0.9914930555555556,
+        "observed": 0.9984756097560976,
         "minimum": 0.95,
-        "worst_person_rate": 0.8888888888888888,
+        "worst_person_rate": 0.975609756097561,
         "people_with_rate": 16,
         "passed": true,
         "reason": ""
@@ -391,9 +405,9 @@
         "metric": "author_match_precision",
         "label": "precision (pooled)",
         "aggregation": "micro",
-        "observed": 0.9959758551307847,
+        "observed": 0.9980119284294234,
         "minimum": 0.95,
-        "worst_person_rate": 0.8888888888888888,
+        "worst_person_rate": 0.975609756097561,
         "people_with_rate": 16,
         "passed": true,
         "reason": ""
@@ -406,7 +420,7 @@
         "observed": 1.0,
         "minimum": 1.0,
         "worst_person_rate": 1.0,
-        "people_with_rate": 30,
+        "people_with_rate": 29,
         "passed": true,
         "reason": ""
       },
@@ -415,9 +429,9 @@
         "metric": "verified_paper_recall",
         "label": "recall",
         "aggregation": "macro",
-        "observed": 0.8909861693676907,
+        "observed": 0.9215753465984086,
         "minimum": 0.8,
-        "worst_person_rate": 0.6666666666666666,
+        "worst_person_rate": 0.0,
         "people_with_rate": 29,
         "passed": true,
         "reason": ""
@@ -427,9 +441,9 @@
         "metric": "verified_paper_recall",
         "label": "recall (pooled)",
         "aggregation": "micro",
-        "observed": 0.8885572139303483,
+        "observed": 0.9034825870646767,
         "minimum": 0.8,
-        "worst_person_rate": 0.6666666666666666,
+        "worst_person_rate": 0.0,
         "people_with_rate": 29,
         "passed": true,
         "reason": ""
@@ -439,10 +453,10 @@
         "metric": "author_match_precision",
         "label": "precision",
         "aggregation": "macro",
-        "observed": 0.9924326599326599,
+        "observed": 0.9960241608685678,
         "minimum": 0.95,
-        "worst_person_rate": 0.8888888888888888,
-        "people_with_rate": 30,
+        "worst_person_rate": 0.9090909090909091,
+        "people_with_rate": 29,
         "passed": true,
         "reason": ""
       },
@@ -451,10 +465,10 @@
         "metric": "author_match_precision",
         "label": "precision (pooled)",
         "aggregation": "micro",
-        "observed": 0.9955456570155902,
+        "observed": 0.9967105263157895,
         "minimum": 0.95,
-        "worst_person_rate": 0.8888888888888888,
-        "people_with_rate": 30,
+        "worst_person_rate": 0.9090909090909091,
+        "people_with_rate": 29,
         "passed": true,
         "reason": ""
       },
@@ -475,9 +489,9 @@
         "metric": "verified_paper_recall",
         "label": "recall",
         "aggregation": "macro",
-        "observed": 0.9088536672383082,
+        "observed": 0.9585308435991394,
         "minimum": 0.8,
-        "worst_person_rate": 0.6716417910447762,
+        "worst_person_rate": 0.8695652173913043,
         "people_with_rate": 7,
         "passed": true,
         "reason": ""
@@ -487,9 +501,9 @@
         "metric": "verified_paper_recall",
         "label": "recall (pooled)",
         "aggregation": "micro",
-        "observed": 0.8699186991869918,
+        "observed": 0.9552845528455285,
         "minimum": 0.8,
-        "worst_person_rate": 0.6716417910447762,
+        "worst_person_rate": 0.8695652173913043,
         "people_with_rate": 7,
         "passed": true,
         "reason": ""
@@ -535,9 +549,9 @@
         "metric": "verified_paper_recall",
         "label": "recall",
         "aggregation": "macro",
-        "observed": 0.889047219765099,
+        "observed": 0.9326415763673891,
         "minimum": 0.8,
-        "worst_person_rate": 0.6973684210526315,
+        "worst_person_rate": 0.8157894736842105,
         "people_with_rate": 8,
         "passed": true,
         "reason": ""
@@ -547,9 +561,9 @@
         "metric": "verified_paper_recall",
         "label": "recall (pooled)",
         "aggregation": "micro",
-        "observed": 0.8913043478260869,
+        "observed": 0.9285714285714286,
         "minimum": 0.8,
-        "worst_person_rate": 0.6973684210526315,
+        "worst_person_rate": 0.8157894736842105,
         "people_with_rate": 8,
         "passed": true,
         "reason": ""
@@ -595,9 +609,9 @@
         "metric": "verified_paper_recall",
         "label": "recall",
         "aggregation": "macro",
-        "observed": 0.8675925925925926,
+        "observed": 0.9833333333333334,
         "minimum": 0.8,
-        "worst_person_rate": 0.6666666666666666,
+        "worst_person_rate": 0.9,
         "people_with_rate": 6,
         "passed": true,
         "reason": ""
@@ -607,9 +621,9 @@
         "metric": "verified_paper_recall",
         "label": "recall (pooled)",
         "aggregation": "micro",
-        "observed": 0.9137931034482759,
+        "observed": 0.9827586206896551,
         "minimum": 0.8,
-        "worst_person_rate": 0.6666666666666666,
+        "worst_person_rate": 0.9,
         "people_with_rate": 6,
         "passed": true,
         "reason": ""
@@ -619,9 +633,9 @@
         "metric": "author_match_precision",
         "label": "precision",
         "aggregation": "macro",
-        "observed": 0.9841269841269842,
+        "observed": 1.0,
         "minimum": 0.95,
-        "worst_person_rate": 0.8888888888888888,
+        "worst_person_rate": 1.0,
         "people_with_rate": 7,
         "passed": true,
         "reason": ""
@@ -631,9 +645,9 @@
         "metric": "author_match_precision",
         "label": "precision (pooled)",
         "aggregation": "micro",
-        "observed": 0.9818181818181818,
+        "observed": 1.0,
         "minimum": 0.95,
-        "worst_person_rate": 0.8888888888888888,
+        "worst_person_rate": 1.0,
         "people_with_rate": 7,
         "passed": true,
         "reason": ""
@@ -646,7 +660,7 @@
         "observed": 1.0,
         "minimum": 1.0,
         "worst_person_rate": 1.0,
-        "people_with_rate": 8,
+        "people_with_rate": 7,
         "passed": true,
         "reason": ""
       },
@@ -655,9 +669,9 @@
         "metric": "verified_paper_recall",
         "label": "recall",
         "aggregation": "macro",
-        "observed": 0.8948362409148157,
+        "observed": 0.8318545669025952,
         "minimum": 0.8,
-        "worst_person_rate": 0.6666666666666666,
+        "worst_person_rate": 0.0,
         "people_with_rate": 8,
         "passed": true,
         "reason": ""
@@ -667,9 +681,9 @@
         "metric": "verified_paper_recall",
         "label": "recall (pooled)",
         "aggregation": "micro",
-        "observed": 0.8944591029023746,
+        "observed": 0.8364116094986808,
         "minimum": 0.8,
-        "worst_person_rate": 0.6666666666666666,
+        "worst_person_rate": 0.0,
         "people_with_rate": 8,
         "passed": true,
         "reason": ""
@@ -679,10 +693,10 @@
         "metric": "author_match_precision",
         "label": "precision",
         "aggregation": "macro",
-        "observed": 0.9855113636363636,
+        "observed": 0.9835286664554957,
         "minimum": 0.95,
         "worst_person_rate": 0.9090909090909091,
-        "people_with_rate": 8,
+        "people_with_rate": 7,
         "passed": true,
         "reason": ""
       },
@@ -691,10 +705,10 @@
         "metric": "author_match_precision",
         "label": "precision (pooled)",
         "aggregation": "micro",
-        "observed": 0.9912280701754386,
+        "observed": 0.990625,
         "minimum": 0.95,
         "worst_person_rate": 0.9090909090909091,
-        "people_with_rate": 8,
+        "people_with_rate": 7,
         "passed": true,
         "reason": ""
       }
@@ -706,57 +720,57 @@
       "people": 32,
       "metrics": {
         "identity_resolution_rate": {
-          "macro": 0.9375,
-          "micro": 0.9375,
+          "macro": 0.90625,
+          "micro": 0.90625,
           "people_with_rate": 32,
           "minimum": 0.0,
-          "numerator": 30,
+          "numerator": 29,
           "denominator": 32,
           "below_truth_minimum": 0
         },
         "identity_precision": {
           "macro": 1.0,
           "micro": 1.0,
-          "people_with_rate": 30,
+          "people_with_rate": 29,
           "minimum": 1.0,
-          "numerator": 30,
-          "denominator": 30,
+          "numerator": 29,
+          "denominator": 29,
           "below_truth_minimum": 0
         },
         "verified_paper_recall": {
-          "macro": 0.8909861693676907,
-          "micro": 0.8885572139303483,
+          "macro": 0.9215753465984086,
+          "micro": 0.9034825870646767,
           "people_with_rate": 29,
-          "minimum": 0.6666666666666666,
-          "numerator": 893,
+          "minimum": 0.0,
+          "numerator": 908,
           "denominator": 1005,
           "below_truth_minimum": 3
         },
         "paper_discovery_recall": {
-          "macro": 0.9208904152219852,
-          "micro": 0.9203980099502488,
+          "macro": 0.9610880550195544,
+          "micro": 0.9522388059701492,
           "people_with_rate": 29,
-          "minimum": 0.6666666666666666,
-          "numerator": 925,
+          "minimum": 0.7333333333333333,
+          "numerator": 957,
           "denominator": 1005,
           "below_truth_minimum": 3
         },
         "author_match_precision": {
-          "macro": 0.9924326599326599,
-          "micro": 0.9955456570155902,
-          "people_with_rate": 30,
-          "minimum": 0.8888888888888888,
-          "numerator": 894,
-          "denominator": 898,
+          "macro": 0.9960241608685678,
+          "micro": 0.9967105263157895,
+          "people_with_rate": 29,
+          "minimum": 0.9090909090909091,
+          "numerator": 909,
+          "denominator": 912,
           "below_truth_minimum": 0
         },
         "actual_download_coverage": {
-          "macro": 0.5211420287886359,
-          "micro": 0.5671641791044776,
-          "people_with_rate": 29,
-          "minimum": 0.08695652173913043,
-          "numerator": 570,
-          "denominator": 1005,
+          "macro": null,
+          "micro": null,
+          "people_with_rate": 0,
+          "minimum": null,
+          "numerator": 0,
+          "denominator": 0,
           "below_truth_minimum": 3
         }
       },
@@ -767,57 +781,57 @@
       "people": 8,
       "metrics": {
         "identity_resolution_rate": {
-          "macro": 1.0,
-          "micro": 1.0,
+          "macro": 0.875,
+          "micro": 0.875,
           "people_with_rate": 8,
-          "minimum": 1.0,
-          "numerator": 8,
+          "minimum": 0.0,
+          "numerator": 7,
           "denominator": 8,
           "below_truth_minimum": 0
         },
         "identity_precision": {
           "macro": 1.0,
           "micro": 1.0,
-          "people_with_rate": 8,
+          "people_with_rate": 7,
           "minimum": 1.0,
-          "numerator": 8,
-          "denominator": 8,
+          "numerator": 7,
+          "denominator": 7,
           "below_truth_minimum": 0
         },
         "verified_paper_recall": {
-          "macro": 0.8948362409148157,
-          "micro": 0.8944591029023746,
+          "macro": 0.8318545669025952,
+          "micro": 0.8364116094986808,
           "people_with_rate": 8,
-          "minimum": 0.6666666666666666,
-          "numerator": 339,
+          "minimum": 0.0,
+          "numerator": 317,
           "denominator": 379,
           "below_truth_minimum": 0
         },
         "paper_discovery_recall": {
-          "macro": 0.9169555770036053,
-          "micro": 0.9182058047493403,
+          "macro": 0.9249747219413549,
+          "micro": 0.9261213720316622,
           "people_with_rate": 8,
-          "minimum": 0.7111111111111111,
-          "numerator": 348,
+          "minimum": 0.7333333333333333,
+          "numerator": 351,
           "denominator": 379,
           "below_truth_minimum": 0
         },
         "author_match_precision": {
-          "macro": 0.9855113636363636,
-          "micro": 0.9912280701754386,
-          "people_with_rate": 8,
+          "macro": 0.9835286664554957,
+          "micro": 0.990625,
+          "people_with_rate": 7,
           "minimum": 0.9090909090909091,
-          "numerator": 339,
-          "denominator": 342,
+          "numerator": 317,
+          "denominator": 320,
           "below_truth_minimum": 0
         },
         "actual_download_coverage": {
-          "macro": 0.52274907532806,
-          "micro": 0.5435356200527705,
-          "people_with_rate": 8,
-          "minimum": 0.1111111111111111,
-          "numerator": 206,
-          "denominator": 379,
+          "macro": null,
+          "micro": null,
+          "people_with_rate": 0,
+          "minimum": null,
+          "numerator": 0,
+          "denominator": 0,
           "below_truth_minimum": 0
         }
       },
@@ -846,20 +860,20 @@
           "below_truth_minimum": 0
         },
         "verified_paper_recall": {
-          "macro": 0.889047219765099,
-          "micro": 0.8913043478260869,
+          "macro": 0.9326415763673891,
+          "micro": 0.9285714285714286,
           "people_with_rate": 8,
-          "minimum": 0.6973684210526315,
-          "numerator": 287,
+          "minimum": 0.8157894736842105,
+          "numerator": 299,
           "denominator": 322,
           "below_truth_minimum": 0
         },
         "paper_discovery_recall": {
-          "macro": 0.9179080513784461,
-          "micro": 0.9130434782608695,
+          "macro": 0.9627192982456141,
+          "micro": 0.9596273291925466,
           "people_with_rate": 8,
-          "minimum": 0.7105263157894737,
-          "numerator": 294,
+          "minimum": 0.868421052631579,
+          "numerator": 309,
           "denominator": 322,
           "below_truth_minimum": 0
         },
@@ -868,17 +882,17 @@
           "micro": 1.0,
           "people_with_rate": 8,
           "minimum": 1.0,
-          "numerator": 287,
-          "denominator": 287,
+          "numerator": 299,
+          "denominator": 299,
           "below_truth_minimum": 0
         },
         "actual_download_coverage": {
-          "macro": 0.4867129891385022,
-          "micro": 0.5745341614906833,
-          "people_with_rate": 8,
-          "minimum": 0.13333333333333333,
-          "numerator": 185,
-          "denominator": 322,
+          "macro": null,
+          "micro": null,
+          "people_with_rate": 0,
+          "minimum": null,
+          "numerator": 0,
+          "denominator": 0,
           "below_truth_minimum": 0
         }
       },
@@ -907,20 +921,20 @@
           "below_truth_minimum": 0
         },
         "verified_paper_recall": {
-          "macro": 0.9088536672383082,
-          "micro": 0.8699186991869918,
+          "macro": 0.9585308435991394,
+          "micro": 0.9552845528455285,
           "people_with_rate": 7,
-          "minimum": 0.6716417910447762,
-          "numerator": 214,
+          "minimum": 0.8695652173913043,
+          "numerator": 235,
           "denominator": 246,
           "below_truth_minimum": 1
         },
         "paper_discovery_recall": {
-          "macro": 0.9566224941179436,
-          "micro": 0.9308943089430894,
+          "macro": 0.9814287762959041,
+          "micro": 0.975609756097561,
           "people_with_rate": 7,
-          "minimum": 0.8208955223880597,
-          "numerator": 229,
+          "minimum": 0.9393939393939394,
+          "numerator": 240,
           "denominator": 246,
           "below_truth_minimum": 1
         },
@@ -929,17 +943,17 @@
           "micro": 1.0,
           "people_with_rate": 7,
           "minimum": 1.0,
-          "numerator": 214,
-          "denominator": 214,
+          "numerator": 235,
+          "denominator": 235,
           "below_truth_minimum": 0
         },
         "actual_download_coverage": {
-          "macro": 0.4979197417362598,
-          "micro": 0.5772357723577236,
-          "people_with_rate": 7,
-          "minimum": 0.08695652173913043,
-          "numerator": 142,
-          "denominator": 246,
+          "macro": null,
+          "micro": null,
+          "people_with_rate": 0,
+          "minimum": null,
+          "numerator": 0,
+          "denominator": 0,
           "below_truth_minimum": 1
         }
       },
@@ -968,39 +982,39 @@
           "below_truth_minimum": 0
         },
         "verified_paper_recall": {
-          "macro": 0.8675925925925926,
-          "micro": 0.9137931034482759,
+          "macro": 0.9833333333333334,
+          "micro": 0.9827586206896551,
           "people_with_rate": 6,
-          "minimum": 0.6666666666666666,
-          "numerator": 53,
+          "minimum": 0.9,
+          "numerator": 57,
           "denominator": 58,
           "below_truth_minimum": 2
         },
         "paper_discovery_recall": {
-          "macro": 0.888425925925926,
-          "micro": 0.9310344827586207,
+          "macro": 0.9833333333333334,
+          "micro": 0.9827586206896551,
           "people_with_rate": 6,
-          "minimum": 0.6666666666666666,
-          "numerator": 54,
+          "minimum": 0.9,
+          "numerator": 57,
           "denominator": 58,
           "below_truth_minimum": 2
         },
         "author_match_precision": {
-          "macro": 0.9841269841269842,
-          "micro": 0.9818181818181818,
+          "macro": 1.0,
+          "micro": 1.0,
           "people_with_rate": 7,
-          "minimum": 0.8888888888888888,
-          "numerator": 54,
-          "denominator": 55,
+          "minimum": 1.0,
+          "numerator": 58,
+          "denominator": 58,
           "below_truth_minimum": 0
         },
         "actual_download_coverage": {
-          "macro": 0.5919973544973545,
-          "micro": 0.6379310344827587,
-          "people_with_rate": 6,
-          "minimum": 0.2222222222222222,
-          "numerator": 37,
-          "denominator": 58,
+          "macro": null,
+          "micro": null,
+          "people_with_rate": 0,
+          "minimum": null,
+          "numerator": 0,
+          "denominator": 0,
           "below_truth_minimum": 2
         }
       },
@@ -1029,20 +1043,20 @@
           "below_truth_minimum": 0
         },
         "verified_paper_recall": {
-          "macro": 0.8713237888693594,
-          "micro": 0.847255369928401,
+          "macro": 0.9330735128366203,
+          "micro": 0.9284009546539379,
           "people_with_rate": 8,
-          "minimum": 0.6716417910447762,
-          "numerator": 355,
+          "minimum": 0.8157894736842105,
+          "numerator": 389,
           "denominator": 419,
           "below_truth_minimum": 0
         },
         "paper_discovery_recall": {
-          "macro": 0.901941464477645,
-          "micro": 0.8878281622911695,
+          "macro": 0.9448372918607165,
+          "micro": 0.9451073985680191,
           "people_with_rate": 8,
-          "minimum": 0.7105263157894737,
-          "numerator": 372,
+          "minimum": 0.868421052631579,
+          "numerator": 396,
           "denominator": 419,
           "below_truth_minimum": 0
         },
@@ -1051,17 +1065,17 @@
           "micro": 1.0,
           "people_with_rate": 8,
           "minimum": 1.0,
-          "numerator": 355,
-          "denominator": 355,
+          "numerator": 389,
+          "denominator": 389,
           "below_truth_minimum": 0
         },
         "actual_download_coverage": {
-          "macro": 0.7219749526379889,
-          "micro": 0.684964200477327,
-          "people_with_rate": 8,
-          "minimum": 0.5263157894736842,
-          "numerator": 287,
-          "denominator": 419,
+          "macro": null,
+          "micro": null,
+          "people_with_rate": 0,
+          "minimum": null,
+          "numerator": 0,
+          "denominator": 0,
           "below_truth_minimum": 0
         }
       },
@@ -1090,11 +1104,11 @@
           "below_truth_minimum": 0
         },
         "verified_paper_recall": {
-          "macro": 0.917662058235679,
-          "micro": 0.9173913043478261,
+          "macro": 0.9229958122906606,
+          "micro": 0.9217391304347826,
           "people_with_rate": 7,
-          "minimum": 0.8478260869565217,
-          "numerator": 211,
+          "minimum": 0.8695652173913043,
+          "numerator": 212,
           "denominator": 230,
           "below_truth_minimum": 1
         },
@@ -1108,21 +1122,21 @@
           "below_truth_minimum": 1
         },
         "author_match_precision": {
-          "macro": 0.9834415584415584,
-          "micro": 0.985981308411215,
+          "macro": 0.9835286664554957,
+          "micro": 0.986046511627907,
           "people_with_rate": 7,
           "minimum": 0.9090909090909091,
-          "numerator": 211,
-          "denominator": 214,
+          "numerator": 212,
+          "denominator": 215,
           "below_truth_minimum": 0
         },
         "actual_download_coverage": {
-          "macro": 0.5551192809139466,
-          "micro": 0.5260869565217391,
-          "people_with_rate": 7,
-          "minimum": 0.08695652173913043,
-          "numerator": 121,
-          "denominator": 230,
+          "macro": null,
+          "micro": null,
+          "people_with_rate": 0,
+          "minimum": null,
+          "numerator": 0,
+          "denominator": 0,
           "below_truth_minimum": 1
         }
       },
@@ -1151,20 +1165,20 @@
           "below_truth_minimum": 0
         },
         "verified_paper_recall": {
-          "macro": 0.9304112554112554,
-          "micro": 0.970954356846473,
+          "macro": 0.9793831168831169,
+          "micro": 0.9875518672199171,
           "people_with_rate": 7,
-          "minimum": 0.75,
-          "numerator": 234,
+          "minimum": 0.9333333333333333,
+          "numerator": 238,
           "denominator": 241,
           "below_truth_minimum": 1
         },
         "paper_discovery_recall": {
-          "macro": 0.9571969696969697,
-          "micro": 0.979253112033195,
+          "macro": 0.9978354978354977,
+          "micro": 0.995850622406639,
           "people_with_rate": 7,
-          "minimum": 0.875,
-          "numerator": 236,
+          "minimum": 0.9848484848484849,
+          "numerator": 240,
           "denominator": 241,
           "below_truth_minimum": 1
         },
@@ -1173,17 +1187,17 @@
           "micro": 1.0,
           "people_with_rate": 8,
           "minimum": 1.0,
-          "numerator": 235,
-          "denominator": 235,
+          "numerator": 239,
+          "denominator": 239,
           "below_truth_minimum": 0
         },
         "actual_download_coverage": {
-          "macro": 0.4242662184151546,
-          "micro": 0.5269709543568465,
-          "people_with_rate": 7,
-          "minimum": 0.13333333333333333,
-          "numerator": 127,
-          "denominator": 241,
+          "macro": null,
+          "micro": null,
+          "people_with_rate": 0,
+          "minimum": null,
+          "numerator": 0,
+          "denominator": 0,
           "below_truth_minimum": 1
         }
       },
@@ -1194,57 +1208,57 @@
       "people": 8,
       "metrics": {
         "identity_resolution_rate": {
-          "macro": 0.875,
-          "micro": 0.875,
+          "macro": 0.75,
+          "micro": 0.75,
           "people_with_rate": 8,
           "minimum": 0.0,
-          "numerator": 7,
+          "numerator": 6,
           "denominator": 8,
           "below_truth_minimum": 0
         },
         "identity_precision": {
           "macro": 1.0,
           "micro": 1.0,
-          "people_with_rate": 7,
+          "people_with_rate": 6,
           "minimum": 1.0,
-          "numerator": 7,
-          "denominator": 7,
+          "numerator": 6,
+          "denominator": 6,
           "below_truth_minimum": 0
         },
         "verified_paper_recall": {
-          "macro": 0.8473564864542309,
-          "micro": 0.808695652173913,
+          "macro": 0.8492063492063492,
+          "micro": 0.6,
           "people_with_rate": 7,
-          "minimum": 0.6666666666666666,
-          "numerator": 93,
+          "minimum": 0.0,
+          "numerator": 69,
           "denominator": 115,
           "below_truth_minimum": 1
         },
         "paper_discovery_recall": {
-          "macro": 0.8770975056689342,
-          "micro": 0.8521739130434782,
+          "macro": 0.953968253968254,
+          "micro": 0.8869565217391304,
           "people_with_rate": 7,
-          "minimum": 0.6666666666666666,
-          "numerator": 98,
+          "minimum": 0.7333333333333333,
+          "numerator": 102,
           "denominator": 115,
           "below_truth_minimum": 1
         },
         "author_match_precision": {
-          "macro": 0.9841269841269842,
-          "micro": 0.9893617021276596,
-          "people_with_rate": 7,
-          "minimum": 0.8888888888888888,
-          "numerator": 93,
-          "denominator": 94,
+          "macro": 1.0,
+          "micro": 1.0,
+          "people_with_rate": 6,
+          "minimum": 1.0,
+          "numerator": 69,
+          "denominator": 69,
           "below_truth_minimum": 0
         },
         "actual_download_coverage": {
-          "macro": 0.3545172454946891,
-          "micro": 0.30434782608695654,
-          "people_with_rate": 7,
-          "minimum": 0.1111111111111111,
-          "numerator": 35,
-          "denominator": 115,
+          "macro": null,
+          "micro": null,
+          "people_with_rate": 0,
+          "minimum": null,
+          "numerator": 0,
+          "denominator": 0,
           "below_truth_minimum": 1
         }
       },
@@ -1255,57 +1269,57 @@
       "people": 16,
       "metrics": {
         "identity_resolution_rate": {
-          "macro": 0.875,
-          "micro": 0.875,
+          "macro": 0.8125,
+          "micro": 0.8125,
           "people_with_rate": 16,
           "minimum": 0.0,
-          "numerator": 14,
+          "numerator": 13,
           "denominator": 16,
           "below_truth_minimum": 0
         },
         "identity_precision": {
           "macro": 1.0,
           "micro": 1.0,
-          "people_with_rate": 14,
+          "people_with_rate": 13,
           "minimum": 1.0,
-          "numerator": 14,
-          "denominator": 14,
+          "numerator": 13,
+          "denominator": 13,
           "below_truth_minimum": 0
         },
         "verified_paper_recall": {
-          "macro": 0.8344114716777028,
-          "micro": 0.8209876543209876,
+          "macro": 0.8719911554156656,
+          "micro": 0.8374485596707819,
           "people_with_rate": 14,
-          "minimum": 0.6666666666666666,
-          "numerator": 399,
+          "minimum": 0.0,
+          "numerator": 407,
           "denominator": 486,
           "below_truth_minimum": 2
         },
         "paper_discovery_recall": {
-          "macro": 0.8760493565360591,
-          "micro": 0.8683127572016461,
+          "macro": 0.9448753231395798,
+          "micro": 0.9279835390946503,
           "people_with_rate": 14,
-          "minimum": 0.6666666666666666,
-          "numerator": 422,
+          "minimum": 0.7333333333333333,
+          "numerator": 451,
           "denominator": 486,
           "below_truth_minimum": 2
         },
         "author_match_precision": {
-          "macro": 0.9935064935064934,
-          "micro": 0.9950124688279302,
-          "people_with_rate": 14,
+          "macro": 0.9930069930069929,
+          "micro": 0.9951100244498777,
+          "people_with_rate": 13,
           "minimum": 0.9090909090909091,
-          "numerator": 399,
-          "denominator": 401,
+          "numerator": 407,
+          "denominator": 409,
           "below_truth_minimum": 0
         },
         "actual_download_coverage": {
-          "macro": 0.47668650327924367,
-          "micro": 0.5,
-          "people_with_rate": 14,
-          "minimum": 0.08695652173913043,
-          "numerator": 243,
-          "denominator": 486,
+          "macro": null,
+          "micro": null,
+          "people_with_rate": 0,
+          "minimum": null,
+          "numerator": 0,
+          "denominator": 0,
           "below_truth_minimum": 2
         }
       },
@@ -1334,39 +1348,39 @@
           "below_truth_minimum": 0
         },
         "verified_paper_recall": {
-          "macro": 0.9437892205450128,
-          "micro": 0.9518304431599229,
+          "macro": 0.9678539250356355,
+          "micro": 0.9653179190751445,
           "people_with_rate": 15,
-          "minimum": 0.8333333333333334,
-          "numerator": 494,
+          "minimum": 0.8695652173913043,
+          "numerator": 501,
           "denominator": 519,
           "below_truth_minimum": 1
         },
         "paper_discovery_recall": {
-          "macro": 0.9627420699955164,
-          "micro": 0.9691714836223507,
+          "macro": 0.9762199381075309,
+          "micro": 0.9749518304431599,
           "people_with_rate": 15,
           "minimum": 0.8695652173913043,
-          "numerator": 503,
+          "numerator": 506,
           "denominator": 519,
           "below_truth_minimum": 1
         },
         "author_match_precision": {
-          "macro": 0.9914930555555556,
-          "micro": 0.9959758551307847,
+          "macro": 0.9984756097560976,
+          "micro": 0.9980119284294234,
           "people_with_rate": 16,
-          "minimum": 0.8888888888888888,
-          "numerator": 495,
-          "denominator": 497,
+          "minimum": 0.975609756097561,
+          "numerator": 502,
+          "denominator": 503,
           "below_truth_minimum": 0
         },
         "actual_download_coverage": {
-          "macro": 0.5626338525974022,
-          "micro": 0.630057803468208,
-          "people_with_rate": 15,
-          "minimum": 0.13333333333333333,
-          "numerator": 327,
-          "denominator": 519,
+          "macro": null,
+          "micro": null,
+          "people_with_rate": 0,
+          "minimum": null,
+          "numerator": 0,
+          "denominator": 0,
           "below_truth_minimum": 1
         }
       },
@@ -1398,28 +1412,28 @@
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 74,
-          "denominator": 86,
-          "rate": 0.8604651162790697,
-          "available": true
-        },
-        "paper_discovery_recall": {
           "numerator": 79,
           "denominator": 86,
           "rate": 0.9186046511627907,
           "available": true
         },
+        "paper_discovery_recall": {
+          "numerator": 80,
+          "denominator": 86,
+          "rate": 0.9302325581395349,
+          "available": true
+        },
         "author_match_precision": {
-          "numerator": 74,
-          "denominator": 74,
+          "numerator": 79,
+          "denominator": 79,
           "rate": 1.0,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 51,
+          "numerator": 0,
           "denominator": 86,
-          "rate": 0.5930232558139535,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -1468,10 +1482,10 @@
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 28,
+          "numerator": 0,
           "denominator": 35,
-          "rate": 0.8,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -1502,28 +1516,28 @@
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 53,
+          "numerator": 62,
           "denominator": 76,
-          "rate": 0.6973684210526315,
+          "rate": 0.8157894736842105,
           "available": true
         },
         "paper_discovery_recall": {
-          "numerator": 54,
+          "numerator": 66,
           "denominator": 76,
-          "rate": 0.7105263157894737,
+          "rate": 0.868421052631579,
           "available": true
         },
         "author_match_precision": {
-          "numerator": 53,
-          "denominator": 53,
+          "numerator": 62,
+          "denominator": 62,
           "rate": 1.0,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 40,
+          "numerator": 0,
           "denominator": 76,
-          "rate": 0.5263157894736842,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -1572,10 +1586,10 @@
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 83,
+          "numerator": 0,
           "denominator": 97,
-          "rate": 0.8556701030927835,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -1606,28 +1620,28 @@
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 45,
+          "numerator": 63,
           "denominator": 67,
-          "rate": 0.6716417910447762,
+          "rate": 0.9402985074626866,
           "available": true
         },
         "paper_discovery_recall": {
-          "numerator": 55,
+          "numerator": 65,
           "denominator": 67,
-          "rate": 0.8208955223880597,
+          "rate": 0.9701492537313433,
           "available": true
         },
         "author_match_precision": {
-          "numerator": 45,
-          "denominator": 45,
+          "numerator": 63,
+          "denominator": 63,
           "rate": 1.0,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 41,
+          "numerator": 0,
           "denominator": 67,
-          "rate": 0.6119402985074627,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -1658,28 +1672,28 @@
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 38,
+          "numerator": 40,
           "denominator": 41,
-          "rate": 0.926829268292683,
+          "rate": 0.975609756097561,
           "available": true
         },
         "paper_discovery_recall": {
-          "numerator": 39,
+          "numerator": 40,
           "denominator": 41,
-          "rate": 0.9512195121951219,
+          "rate": 0.975609756097561,
           "available": true
         },
         "author_match_precision": {
-          "numerator": 38,
-          "denominator": 38,
+          "numerator": 40,
+          "denominator": 40,
           "rate": 1.0,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 30,
+          "numerator": 0,
           "denominator": 41,
-          "rate": 0.7317073170731707,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -1728,10 +1742,10 @@
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 8,
+          "numerator": 0,
           "denominator": 10,
-          "rate": 0.8,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -1780,10 +1794,10 @@
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 6,
+          "numerator": 0,
           "denominator": 7,
-          "rate": 0.8571428571428571,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -1832,10 +1846,10 @@
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 14,
+          "numerator": 0,
           "denominator": 21,
-          "rate": 0.6666666666666666,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -1866,9 +1880,9 @@
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 39,
+          "numerator": 40,
           "denominator": 46,
-          "rate": 0.8478260869565217,
+          "rate": 0.8695652173913043,
           "available": true
         },
         "paper_discovery_recall": {
@@ -1878,16 +1892,16 @@
           "available": true
         },
         "author_match_precision": {
-          "numerator": 39,
-          "denominator": 40,
-          "rate": 0.975,
+          "numerator": 40,
+          "denominator": 41,
+          "rate": 0.975609756097561,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 33,
+          "numerator": 0,
           "denominator": 46,
-          "rate": 0.717391304347826,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -1936,10 +1950,10 @@
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 15,
+          "numerator": 0,
           "denominator": 18,
-          "rate": 0.8333333333333334,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -1970,9 +1984,9 @@
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 65,
+          "numerator": 64,
           "denominator": 68,
-          "rate": 0.9558823529411765,
+          "rate": 0.9411764705882353,
           "available": true
         },
         "paper_discovery_recall": {
@@ -1982,16 +1996,16 @@
           "available": true
         },
         "author_match_precision": {
-          "numerator": 65,
-          "denominator": 65,
+          "numerator": 64,
+          "denominator": 64,
           "rate": 1.0,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 26,
+          "numerator": 0,
           "denominator": 68,
-          "rate": 0.38235294117647056,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2040,10 +2054,10 @@
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 2,
+          "numerator": 0,
           "denominator": 23,
-          "rate": 0.08695652173913043,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2074,9 +2088,9 @@
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 30,
+          "numerator": 31,
           "denominator": 33,
-          "rate": 0.9090909090909091,
+          "rate": 0.9393939393939394,
           "available": true
         },
         "paper_discovery_recall": {
@@ -2086,16 +2100,16 @@
           "available": true
         },
         "author_match_precision": {
-          "numerator": 30,
-          "denominator": 30,
+          "numerator": 31,
+          "denominator": 31,
           "rate": 1.0,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 16,
+          "numerator": 0,
           "denominator": 33,
-          "rate": 0.48484848484848486,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2146,8 +2160,8 @@
         "actual_download_coverage": {
           "numerator": 0,
           "denominator": 1,
-          "rate": 0.0,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2196,10 +2210,10 @@
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 15,
+          "numerator": 0,
           "denominator": 21,
-          "rate": 0.7142857142857143,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2230,28 +2244,28 @@
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 32,
+          "numerator": 33,
           "denominator": 33,
-          "rate": 0.9696969696969697,
+          "rate": 1.0,
           "available": true
         },
         "paper_discovery_recall": {
-          "numerator": 32,
+          "numerator": 33,
           "denominator": 33,
-          "rate": 0.9696969696969697,
+          "rate": 1.0,
           "available": true
         },
         "author_match_precision": {
-          "numerator": 32,
-          "denominator": 32,
+          "numerator": 33,
+          "denominator": 33,
           "rate": 1.0,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 6,
+          "numerator": 0,
           "denominator": 33,
-          "rate": 0.18181818181818182,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2300,10 +2314,10 @@
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 60,
+          "numerator": 0,
           "denominator": 94,
-          "rate": 0.6382978723404256,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2334,28 +2348,28 @@
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 14,
-          "denominator": 16,
-          "rate": 0.875,
-          "available": true
-        },
-        "paper_discovery_recall": {
           "numerator": 15,
           "denominator": 16,
           "rate": 0.9375,
           "available": true
         },
+        "paper_discovery_recall": {
+          "numerator": 16,
+          "denominator": 16,
+          "rate": 1.0,
+          "available": true
+        },
         "author_match_precision": {
-          "numerator": 14,
-          "denominator": 14,
+          "numerator": 15,
+          "denominator": 15,
           "rate": 1.0,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 4,
+          "numerator": 0,
           "denominator": 16,
-          "rate": 0.25,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2392,9 +2406,9 @@
           "available": true
         },
         "paper_discovery_recall": {
-          "numerator": 14,
+          "numerator": 15,
           "denominator": 15,
-          "rate": 0.9333333333333333,
+          "rate": 1.0,
           "available": true
         },
         "author_match_precision": {
@@ -2404,10 +2418,10 @@
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 2,
+          "numerator": 0,
           "denominator": 15,
-          "rate": 0.13333333333333333,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2456,10 +2470,10 @@
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 46,
+          "numerator": 0,
           "denominator": 66,
-          "rate": 0.696969696969697,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2508,10 +2522,10 @@
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 4,
+          "numerator": 0,
           "denominator": 9,
-          "rate": 0.4444444444444444,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2542,28 +2556,28 @@
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 6,
+          "numerator": 8,
           "denominator": 8,
-          "rate": 0.75,
+          "rate": 1.0,
           "available": true
         },
         "paper_discovery_recall": {
-          "numerator": 7,
+          "numerator": 8,
           "denominator": 8,
-          "rate": 0.875,
+          "rate": 1.0,
           "available": true
         },
         "author_match_precision": {
-          "numerator": 6,
-          "denominator": 6,
+          "numerator": 8,
+          "denominator": 8,
           "rate": 1.0,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 5,
+          "numerator": 0,
           "denominator": 8,
-          "rate": 0.625,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2612,10 +2626,10 @@
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 1,
+          "numerator": 0,
           "denominator": 1,
-          "rate": 1.0,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2646,9 +2660,9 @@
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 18,
+          "numerator": 19,
           "denominator": 19,
-          "rate": 0.9473684210526315,
+          "rate": 1.0,
           "available": true
         },
         "paper_discovery_recall": {
@@ -2658,16 +2672,16 @@
           "available": true
         },
         "author_match_precision": {
-          "numerator": 18,
-          "denominator": 18,
+          "numerator": 19,
+          "denominator": 19,
           "rate": 1.0,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 9,
+          "numerator": 0,
           "denominator": 19,
-          "rate": 0.47368421052631576,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2686,40 +2700,40 @@
       "truth_positives": 45,
       "metrics": {
         "identity_resolution_rate": {
-          "numerator": 1,
+          "numerator": 0,
           "denominator": 1,
-          "rate": 1.0,
+          "rate": 0.0,
           "available": true
         },
         "identity_precision": {
-          "numerator": 1,
-          "denominator": 1,
-          "rate": 1.0,
+          "numerator": 0,
+          "denominator": 0,
+          "rate": null,
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 30,
+          "numerator": 0,
           "denominator": 45,
-          "rate": 0.6666666666666666,
+          "rate": 0.0,
           "available": true
         },
         "paper_discovery_recall": {
-          "numerator": 32,
+          "numerator": 33,
           "denominator": 45,
-          "rate": 0.7111111111111111,
+          "rate": 0.7333333333333333,
           "available": true
         },
         "author_match_precision": {
-          "numerator": 30,
-          "denominator": 30,
-          "rate": 1.0,
+          "numerator": 0,
+          "denominator": 0,
+          "rate": null,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 5,
+          "numerator": 0,
           "denominator": 45,
-          "rate": 0.1111111111111111,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2750,28 +2764,28 @@
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 13,
+          "numerator": 14,
           "denominator": 14,
-          "rate": 0.9285714285714286,
+          "rate": 1.0,
           "available": true
         },
         "paper_discovery_recall": {
-          "numerator": 13,
+          "numerator": 14,
           "denominator": 14,
-          "rate": 0.9285714285714286,
+          "rate": 1.0,
           "available": true
         },
         "author_match_precision": {
-          "numerator": 13,
-          "denominator": 13,
+          "numerator": 14,
+          "denominator": 14,
           "rate": 1.0,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 5,
+          "numerator": 0,
           "denominator": 14,
-          "rate": 0.35714285714285715,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2802,9 +2816,9 @@
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 15,
+          "numerator": 17,
           "denominator": 18,
-          "rate": 0.8333333333333334,
+          "rate": 0.9444444444444444,
           "available": true
         },
         "paper_discovery_recall": {
@@ -2814,16 +2828,16 @@
           "available": true
         },
         "author_match_precision": {
-          "numerator": 15,
-          "denominator": 15,
+          "numerator": 17,
+          "denominator": 17,
           "rate": 1.0,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 10,
+          "numerator": 0,
           "denominator": 18,
-          "rate": 0.5555555555555556,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2860,9 +2874,9 @@
           "available": true
         },
         "paper_discovery_recall": {
-          "numerator": 0,
+          "numerator": 1,
           "denominator": 2,
-          "rate": 0.0,
+          "rate": 0.5,
           "available": true
         },
         "author_match_precision": {
@@ -2874,8 +2888,8 @@
         "actual_download_coverage": {
           "numerator": 0,
           "denominator": 2,
-          "rate": 0.0,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2924,10 +2938,10 @@
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 3,
+          "numerator": 0,
           "denominator": 7,
-          "rate": 0.42857142857142855,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -2958,28 +2972,28 @@
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 2,
+          "numerator": 3,
           "denominator": 3,
-          "rate": 0.6666666666666666,
+          "rate": 1.0,
           "available": true
         },
         "paper_discovery_recall": {
-          "numerator": 2,
+          "numerator": 3,
           "denominator": 3,
-          "rate": 0.6666666666666666,
+          "rate": 1.0,
           "available": true
         },
         "author_match_precision": {
-          "numerator": 2,
-          "denominator": 2,
+          "numerator": 3,
+          "denominator": 3,
           "rate": 1.0,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 1,
+          "numerator": 0,
           "denominator": 3,
-          "rate": 0.3333333333333333,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
@@ -3010,28 +3024,28 @@
           "available": true
         },
         "verified_paper_recall": {
-          "numerator": 8,
+          "numerator": 9,
           "denominator": 9,
-          "rate": 0.8888888888888888,
+          "rate": 1.0,
           "available": true
         },
         "paper_discovery_recall": {
-          "numerator": 8,
+          "numerator": 9,
           "denominator": 9,
-          "rate": 0.8888888888888888,
+          "rate": 1.0,
           "available": true
         },
         "author_match_precision": {
-          "numerator": 8,
+          "numerator": 9,
           "denominator": 9,
-          "rate": 0.8888888888888888,
+          "rate": 1.0,
           "available": true
         },
         "actual_download_coverage": {
-          "numerator": 2,
+          "numerator": 0,
           "denominator": 9,
-          "rate": 0.2222222222222222,
-          "available": true
+          "rate": null,
+          "available": false
         }
       },
       "notes": [
