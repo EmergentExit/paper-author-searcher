@@ -244,6 +244,44 @@ def command_score(args) -> int:
     return scored['gate']['exit_code'] if args.enforce_gate else 0
 
 
+def command_decisions(args) -> int:
+    from . import decisions
+
+    settings = BenchmarkSettings.load(args.config)
+    saved = decisions.snapshot(settings.paths.runs, args.run_id)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    write_json(args.output, saved)
+    print(f'Saved the decisions of run {args.run_id} ({len(saved["people"])} people) to {args.output}')
+    return 0
+
+
+def command_compare_decisions(args) -> int:
+    from . import decisions
+
+    settings = BenchmarkSettings.load(args.config)
+    baseline = decisions.load_snapshot(settings.paths.runs, args.baseline)
+    candidate = decisions.load_snapshot(settings.paths.runs, args.candidate)
+    differences = decisions.compare(baseline, candidate)
+    text = decisions.markdown(baseline, candidate, differences)
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        write_json(args.output, [difference.to_dict() for difference in differences])
+    print(text)
+    return 1 if differences else 0
+
+
+def command_timings(args) -> int:
+    from .timing_report import markdown, summarize
+
+    settings = BenchmarkSettings.load(args.config)
+    summary = summarize(settings.paths.runs, args.run_id)
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        write_json(args.output, summary)
+    print(markdown(summary))
+    return 0
+
+
 def command_diagnose(args) -> int:
     from paper_author_searcher.http_budget import ledger_summary
 
@@ -428,6 +466,27 @@ def build_parser() -> argparse.ArgumentParser:
         '--enforce-gate', action='store_true', help='Exit 0 passed, 1 failed, 3 not certifiable (provisional truth)'
     )
     score.set_defaults(handler=command_score)
+
+    decisions = commands.add_parser(
+        'decisions', help="Save a run's identity and paper ownership decisions to a small JSON file (offline)"
+    )
+    decisions.add_argument('--run-id', required=True)
+    decisions.add_argument('--output', type=Path, required=True)
+    decisions.set_defaults(handler=command_decisions)
+
+    compare = commands.add_parser(
+        'compare-decisions',
+        help='List every decision that differs between two runs; exit 1 if any does (offline)',
+    )
+    compare.add_argument('--baseline', required=True, help='Run ID, or a file saved by the decisions command')
+    compare.add_argument('--candidate', required=True, help='Run ID, or a file saved by the decisions command')
+    compare.add_argument('--output', type=Path, help='Also write every difference as JSON')
+    compare.set_defaults(handler=command_compare_decisions)
+
+    timings = commands.add_parser('timings', help='Summarize where a run spent its time (offline)')
+    timings.add_argument('--run-id', required=True)
+    timings.add_argument('--output', type=Path, help='Also write the summary as JSON')
+    timings.set_defaults(handler=command_timings)
 
     diagnose = commands.add_parser(
         'diagnose-identity', help='Label identity failures against truth (network, cached; evaluation only)'
