@@ -46,6 +46,32 @@ paper-benchmark score --run-id replay-x
 
 改动锚点发现（主页解析）后，无法离线验证，必须联网重跑。
 
+原 run 用过本地 DBLP 索引（`output/dblp/dblp.sqlite`）时，重放也要设置 `PAPER_SEARCH__DBLP_DUMP__INDEX_PATH` 指向它，否则 DBLP 请求在缓存里找不到，结果会和原 run 不一样。
+
+### 判定一致性门禁（重构和提速用）
+
+重构、提速这类改动不应该改变任何判定。门禁用离线重放检查这一点：用旧代码和新代码重放同一个已录制的 run，逐人比较身份、run 状态和每篇论文的归属状态，任何差异都算失败。论文按合并进它的来源记录识别，所以去重结果变化也会被发现。
+
+```bash
+# 1. 在可信代码（通常是 main）上生成基线，只需一次
+PAPER_SEARCH__DBLP_DUMP__INDEX_PATH=output/dblp/dblp.sqlite \
+  paper-benchmark run --replay-from career-chg --input-profile minimal --run-id replay-main
+paper-benchmark decisions --run-id replay-main --output baseline.decisions.json
+
+# 2. 在要检查的分支上：重放、比较、打印耗时，完全一致才返回 0
+python scripts/ci/replay_gate.py --replay-from career-chg --baseline baseline.decisions.json
+```
+
+- `paper-benchmark decisions`：把一个 run 的判定存成小 JSON（32 人约 1.5 MB），基线不必保留整个 run 目录。
+- `paper-benchmark compare-decisions --baseline A --candidate B`：A、B 可以是 run ID 或 decisions 文件；列出每个人的身份变化、verified 新增与丢失、其他状态变化，有差异时退出码为 1。
+- `replay_gate.py` 默认使用 `output/dblp/dblp.sqlite`（存在时），跑完会删除重放出的 run 目录（约 0.6–0.9 GB），用 `--keep` 保留。
+
+录制缓存有几 GB，只在录制它的机器上，所以这个门禁在本地运行，不在 GitHub CI 里。有意改变判定的改动（比如提高召回）门禁一定会失败，这时用 `paper-benchmark score` 给两个 run 打分，确认差异是改进再合并。
+
+### 耗时
+
+每份 workflow `report.json` 都有 `timings`：总耗时、各阶段与关键步骤（身份候选搜索、锚点发现、论文查询、按姓名搜索、去重、归属判定等）的秒数，以及本次运行按 host 统计的 HTTP 调用数、失败数和秒数。`paper-benchmark timings --run-id X` 汇总整个 run，并列出最慢的人；`index.json` 里每人还有 `elapsed_seconds`。重放时请求都走缓存，HTTP 秒数不代表网络耗时，要看网络耗时需比较联网 run。
+
 需要可信 CA 时沿用 `SSL_CERT_FILE=/etc/ssl/cert.pem`。`CROSSREF_MAILTO` 可选，用于 Crossref polite pool；其余 API key 与主流程相同。
 
 ## 配置（`data/benchmark/v1/benchmark.json`）
@@ -116,6 +142,7 @@ paper-benchmark score --run-id replay-x
 ## CI
 
 - `.github/workflows/ci.yml`：每次 push / PR 运行全部离线单元测试和 `paper-benchmark validate`。
+- 判定一致性门禁（`scripts/ci/replay_gate.py`）依赖本地录制缓存，在本地运行，见上文"判定一致性门禁"。
 - `.github/workflows/benchmark.yml`：只能手动触发，联网运行完整评测并执行门槛。有意义的分数需要数据源密钥和本地 DBLP、书目库索引，要先在仓库 secrets 和工作流里配好，否则大部分数据源会拒绝或限流，分数不反映代码质量；未审核导致的 `not_certifiable` 平时只给 warning，手动触发时勾选 `release` 则视为失败。报告作为 artifact 上传。
 
 联网评测依赖外部 API 的可用性和限流，同一代码两次运行的数字可能有小幅波动；比较版本时应使用同一套真值。

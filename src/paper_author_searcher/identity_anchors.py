@@ -44,6 +44,7 @@ from .models import AnchorEvidence
 from .profile_links import ORCID_SOURCE, ProfileLink, ProfileLinkParser
 from .publication_extraction import html_text
 from .status import AnchorKind
+from .timings import phase
 
 logger = logging.getLogger(__name__)
 
@@ -237,15 +238,17 @@ class ScholarlyAnchorFinder:
         supplied_orcid = query.orcid or next((link.identifier for link in links if link.source == ORCID_SOURCE), None)
         if supplied_orcid and not query.orcid:
             query = replace(query, orcid=supplied_orcid)
-        discovery = self.discovery.discover(query)
+        with phase('anchors: discovery'):
+            discovery = self.discovery.discover(query)
         orcid = canonical_orcid(supplied_orcid) if supplied_orcid else discovery.orcid
         anchors = IdentityAnchors(orcid=orcid, discovered=discovery.to_dict())
         anchors.errors.extend(f'discovery {error}' for error in discovery.errors)
         self._profile_anchors(anchors, links)
         if anchors.orcid:
-            self._guard(anchors, self._by_orcid, query, anchors.orcid)
-            if self.config.orcid_listed_works:
-                self._guard(anchors, self._orcid_works, query, anchors.orcid)
+            with phase('anchors: ORCID'):
+                self._guard(anchors, self._by_orcid, query, anchors.orcid)
+                if self.config.orcid_listed_works:
+                    self._guard(anchors, self._orcid_works, query, anchors.orcid)
         hints = paper_hints(list(query.known_papers))
         page_titles: list[str] = []
         supplied = query.pages()
@@ -260,7 +263,8 @@ class ScholarlyAnchorFinder:
             if page.strict and room < 1:
                 break
             try:
-                read = self._read_page(page.url)
+                with phase('anchors: page reads'):
+                    read = self._read_page(page.url)
             except (SourceError, ValueError) as exc:
                 anchors.errors.append(f'page {page.url}: {exc}')
                 room -= page.strict
@@ -285,7 +289,9 @@ class ScholarlyAnchorFinder:
             anchors.listed_pdfs += new[: max(0, self.config.maximum_listed_pdfs - len(anchors.listed_pdfs))]
         for source in self.listed_sources:
             try:
-                anchors.listed_works = sorted(set(anchors.listed_works) | source.works(query))
+                with phase('anchors: listed sources'):
+                    works = source.works(query)
+                anchors.listed_works = sorted(set(anchors.listed_works) | works)
             except (SourceError, ValueError) as exc:
                 anchors.errors.append(f'{source.name}: {exc}')
         budget = self.config.maximum_anchor_papers
@@ -293,12 +299,13 @@ class ScholarlyAnchorFinder:
         # A page that links no identifiers (titles only) is still usable: exact-title lookups fill the budget left.
         title_budget = min(self.config.maximum_title_anchors, max(0, budget - len(dois) - len(arxiv_ids)))
         titles = hints['title'][:budget] + page_titles[:title_budget]
-        for doi in dois:
-            self._guard(anchors, self._by_doi, query, doi)
-        for arxiv in arxiv_ids:
-            self._guard(anchors, self._by_arxiv, query, arxiv)
-        for title in titles:
-            self._guard(anchors, self._by_title, query, title)
+        with phase('anchors: paper lookups'):
+            for doi in dois:
+                self._guard(anchors, self._by_doi, query, doi)
+            for arxiv in arxiv_ids:
+                self._guard(anchors, self._by_arxiv, query, arxiv)
+            for title in titles:
+                self._guard(anchors, self._by_title, query, title)
         anchors.settle_contested(self.config.minimum_contested_works)
         return anchors
 
