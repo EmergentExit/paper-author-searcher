@@ -15,9 +15,14 @@ class HttpConfig:
     retry_backoff_base: float = 2
     retry_statuses: tuple[int, ...] = (429, 500, 502, 503, 504)
     user_agent: str = 'paper-author-searcher/0.1'
-    # Minimum seconds between requests to a host, as its terms require (arXiv asks for 3 s). Applied below the
-    # cache, so cached and replayed requests never wait.
-    host_request_intervals: tuple[tuple[str, float], ...] = (('export.arxiv.org', 3.0), ('dspace.mit.edu', 2.0))
+    # Minimum seconds between requests to a host, as its terms require (arXiv asks for 3 s; Semantic Scholar allows
+    # one request a second per key, and answers faster bursts with 429s that each cost a retry wait). Applied below
+    # the cache, so cached and replayed requests never wait. The service uses ServiceConfig.shared_host_intervals.
+    host_request_intervals: tuple[tuple[str, float], ...] = (
+        ('export.arxiv.org', 3.0),
+        ('api.semanticscholar.org', 1.0),
+        ('dspace.mit.edu', 2.0),
+    )
     # A host's 429 Retry-After holds back its later requests for at most this long (a daily quota says hours).
     maximum_host_hold_seconds: float = 60.0
 
