@@ -14,7 +14,7 @@ Python >= 3.10 的论文检索工具，接入 OpenAlex、Semantic Scholar 和 DB
 paper-search-api serve --open
 ```
 
-给程序调用的异步 HTTP API（API Key 鉴权、幂等、同名者确认）见 [搜索服务 API](docs/api.md)。
+给程序调用的异步 HTTP API（API Key 鉴权、幂等、同名者确认）见 [搜索服务 API](docs/api.md)。同样的功能也有 gRPC 接口，见 [gRPC API](docs/grpc.md)。
 
 部署（Docker、worker 队列、对象存储、健康检查、指标和告警）见 [部署与运维](docs/deployment.md)；cold-email agent 应读取的输出见 [输出契约](docs/agent-contract.md)。
 
