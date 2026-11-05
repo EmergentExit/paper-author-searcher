@@ -3,6 +3,7 @@
     paper-search-api serve --open             web page in the browser, signed in for this session
     paper-search-api serve                    API (and, with service.workers > 0, workers) in one process
     paper-search-api worker --threads 2       a separate worker process (serve with --workers 0)
+    paper-search-api serve-grpc               the gRPC API (needs the "grpc" extra); searches run in workers
     paper-search-api create-key --name agent  a key for programs; printed once
     paper-search-api refresh-indexes --every-hours 168
     paper-search-api backup --output /backups --keep 14 --every-hours 24
@@ -144,6 +145,23 @@ def serve(settings: Settings, open_browser: bool = False) -> None:
         deployment.stop(timeout=5)
 
 
+def serve_grpc(settings: Settings, check: bool = False) -> int:
+    """The gRPC API over the same job store (searches run in separate worker processes); with ``check``, only
+    whether a running one answers (exit status 0) or not (1)."""
+    try:
+        from paper_author_searcher.rpc.server import build_server, healthy, serve_until_stopped
+    except ImportError as exc:
+        raise SystemExit(f"serve-grpc needs the grpc extra: pip install '.[grpc]' ({exc})") from exc
+    if check:
+        return 0 if healthy(settings.service) else 1
+    api, _ = build(settings, workers=0)
+    if not api.keys.keys:
+        raise SystemExit(f'No API keys in {keys_path(settings)} or service.api_key_hashes')
+    server, port = build_server(api.service, api.keys, settings.service)
+    serve_until_stopped(server, port, secure=bool(settings.service.grpc_tls_certificate_file))
+    return 0
+
+
 def work(settings: Settings, threads: int) -> None:
     """Run ``threads`` workers in this process until SIGTERM or Ctrl-C (a running search is let finish)."""
     _, deployment = build(settings, workers=threads)
@@ -179,6 +197,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument('--workers', type=int, help='In-process worker threads; 0 = separate worker processes only')
     run.add_argument('--max-cost-usd', type=float, help='Metered-API spend cap per search')
     run.add_argument('--open', action='store_true', help='Open the web page in a browser, signed in for this session')
+    grpc_server = commands.add_parser('serve-grpc', help='Run the gRPC API (searches run in worker processes)')
+    grpc_server.add_argument('--grpc-host')
+    grpc_server.add_argument('--grpc-port', type=int)
+    grpc_server.add_argument('--check', action='store_true', help='Only check that a running server answers')
     worker = commands.add_parser('worker', help='Run searches from the queue (scale by running more of these)')
     worker.add_argument('--threads', type=int, default=1)
     create = commands.add_parser('create-key', help='Create an API key and print it once')
@@ -206,6 +228,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         'port': getattr(args, 'port', None),
         'workers': getattr(args, 'workers', None),
         'maximum_cost_usd': getattr(args, 'max_cost_usd', None),
+        'grpc_host': getattr(args, 'grpc_host', None),
+        'grpc_port': getattr(args, 'grpc_port', None),
     }
     chosen = {name: value for name, value in overrides.items() if value is not None}
     settings = replace(settings, service=replace(settings.service, **chosen))
@@ -249,6 +273,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         print(backups.create(args.output, args.keep))
         return 0
+    if args.command == 'serve-grpc':
+        return serve_grpc(settings, check=args.check)
     if args.command == 'worker':
         if args.threads < 1:
             parser.error('--threads must be positive')
