@@ -40,4 +40,4 @@ Semantic Scholar 出现 HTTP 429；部分网站发生 DNS 错误、HTTP 404/429 
 
 验证范围：真实轻量 HTTP 请求确认 PDF 文件头，同时公开来源 DOI/论文元数据确认链接对应关系。没有解析 PDF 全文，因此不是对完整文件及内部内容的独立鉴定。未验证或失效链接均保留于 JSON。
 
-[完整 JSON 报告](../hinton_papers.pdf_urls.sample.json)
+完整 JSON 报告已移出仓库：`paper-test-must/samples/hinton/hinton_papers.pdf_urls.sample.json`
