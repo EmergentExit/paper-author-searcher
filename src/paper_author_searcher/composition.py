@@ -63,6 +63,7 @@ from .publication_extraction import (
 from .resolver import ProfessorResolver
 from .settings import Settings
 from .source_catalog import IDENTITY_SOURCES, NAME_SEARCHES, PAPER_SOURCES, PDF_SOURCES, WEB_SEARCH, WORK_LOOKUPS
+from .timings import HttpMeter, TimedHttpClient
 from .venue_catalogs import CatalogIndexer, CatalogStore, catalog_sources, probe_fetch
 from .web_search import FallbackWebSearch
 from .workflow import PaperSearchWorkflow
@@ -152,9 +153,15 @@ class ServiceContainer:
     # Transport ---------------------------------------------------------------------------------------------------
 
     @cached_property
+    def http_meter(self) -> HttpMeter:
+        """Requests and seconds per host through ``http_client``; each workflow report takes its own share."""
+        return HttpMeter()
+
+    @cached_property
     def http_client(self) -> Any:
-        """deadline -> cache -> budget -> pacing -> network: cached replays are free and never wait; real requests
-        are priced and keep each host's interval; past the run's deadline nothing is asked at all."""
+        """timing -> deadline -> cache -> budget -> pacing -> network: every request is timed by host; cached replays
+        are free and never wait; real requests are priced and keep each host's interval; past the run's deadline
+        nothing is asked at all."""
         options = self.options
         network = HttpClient(timeout=options.timeout, retries=options.retries, config=self.settings.http)
         limits = self.transport_limits
@@ -164,7 +171,8 @@ class ServiceContainer:
         )
         metered = budgeted_client(paced, options.max_cost_usd, options.cost_ledger, limits.daily_budget)
         cached = cached_client(metered, options.http_cache_dir, options.http_cache_mode)
-        return DeadlineHttpClient(cached, options.deadline) if options.deadline else cached
+        bounded = DeadlineHttpClient(cached, options.deadline) if options.deadline else cached
+        return TimedHttpClient(bounded, self.http_meter)
 
     @cached_property
     def dblp_index(self) -> DblpDumpIndex | None:
@@ -519,6 +527,7 @@ class ServiceContainer:
             matching_config=self.settings.matching,
             storage=self.settings.storage,
             query_expander=self.institution_names.expand,
+            http_meter=self.http_meter,
         )
 
 
