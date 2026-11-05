@@ -186,6 +186,9 @@ class ListedWorksConfig:
     enabled: bool = True
     maximum_lookups: int = 100
     title_search_results: int = 3
+    # Works looked up at once. Each still asks its sources in order; the HTTP layer keeps every host's interval, so
+    # more workers overlap waits on different hosts without sending any host more than it allows.
+    lookup_workers: int = 4
     # Names registered in source_catalog.WORK_LOOKUPS. OpenAlex first (richest authorship), then sources that
     # index what it misses: Semantic Scholar (CS venues), Crossref (publisher records), arXiv (preprints).
     sources: tuple[str, ...] = (
@@ -200,8 +203,10 @@ class ListedWorksConfig:
     )
 
     def __post_init__(self) -> None:
-        if self.maximum_lookups < 0 or self.title_search_results < 1:
-            raise ValueError('maximum_lookups must be nonnegative and title_search_results positive')
+        if self.maximum_lookups < 0 or self.title_search_results < 1 or self.lookup_workers < 1:
+            raise ValueError(
+                'maximum_lookups must be nonnegative, and title_search_results and lookup_workers positive'
+            )
 
 
 DEFAULT_LISTED_WORKS = ListedWorksConfig()
