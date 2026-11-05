@@ -53,7 +53,7 @@ Inputs can be saved Resolver JSON, Collector JSON (including the existing CLI wr
 ```bash
 # Existing collection -> PDF URLs without collecting again
 python3 -m paper_author_searcher.cli --mode pdf-urls \
-  --input hinton_papers.authorship.json \
+  --input ../paper-test-must/samples/hinton/hinton_papers.authorship.json \
   --output-dir output --max-pdf-papers 2
 
 # Resume the same workflow folder; reuse and revalidate completed files

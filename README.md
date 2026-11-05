@@ -119,7 +119,7 @@ OpenAlex 默认搜索 25 个候选，并为最多 8 个姓名兼容候选查询�
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 # 独立、显式联网测试；需要可访问公开 API，可按需设置上述密钥和 CA 环境变量
-PYTHONPATH=src python3 tests/live_check.py --name "<professor name>" --university "<university>"
+PYTHONPATH=src python3 scripts/ops/live_check.py --name "<professor name>" --university "<university>"
 ```
 
 Mock 测试覆盖多语言和不同研究领域的合成作者同名隔离、缺失学校与不匹配学校、历史机构、ORCID 冲突、DOI 规范化、共同作者、OpenAlex 本人机构提取、CLI 输出以及 DBLP HTML/JSON/HTTP 错误。联网检查使用传入的姓名和学校，验证输出结构、置信度范围以及学校未知时不能 resolved 等规则，不断言固定 Author ID。它是接口集成检查，不能证明真实身份匹配正确；独立的真实身份评估需要人工核验的数据集。数据源重复身份仍可能导致 ambiguous，来源异常会明确显示。
@@ -242,7 +242,7 @@ PYTHONPATH=src python3 -m paper_author_searcher.pdf_cli \
 
 # 小规模验证：按保存顺序处理前 5 篇符合归属条件的论文
 PYTHONPATH=src python3 -m paper_author_searcher.pdf_cli \
-  --input hinton_papers.authorship.json --output hinton_papers.pdf_urls.sample.json \
+  --input ../paper-test-must/samples/hinton/hinton_papers.authorship.json --output ../paper-test-must/samples/hinton/hinton_papers.pdf_urls.sample.json \
   --max-papers 5 --timeout 8 --retries 1
 
 # 明确包含待审核论文；Unpaywall 需要真实联系邮箱
@@ -273,7 +273,7 @@ PYTHONPATH=src python3 -m paper_author_searcher.pdf_cli \
 
 接口依据：[OpenAlex Locations](https://help.openalex.org/data/locations/)、[Semantic Scholar 官方 API](https://api.semanticscholar.org/api-docs/graph)、[Unpaywall 数据字段](https://unpaywall.org/data-format)、[Unpaywall API 邮箱要求](https://data.unpaywall.org/products/api)、[arXiv API](https://info.arxiv.org/help/api/user-manual.html)。
 
-本次小规模真实测试及访问限制见 [测试报告](reports/pdf_url_sample.md)；全部候选、HTTP 文件头观察和未处理状态见 [URL JSON](hinton_papers.pdf_urls.sample.json)。在归档顺序的前 5 篇已确认归属论文中，1 个 URL 同时通过文件头及论文元数据核对；该样本不能用于推算全部条目的 PDF 覆盖率。
+本次小规模真实测试及访问限制见 [测试报告](reports/pdf_url_sample.md)；全部候选、HTTP 文件头观察和未处理状态见 URL JSON（已移出仓库，位于 `paper-test-must/samples/hinton/hinton_papers.pdf_urls.sample.json`）。在归档顺序的前 5 篇已确认归属论文中，1 个 URL 同时通过文件头及论文元数据核对；该样本不能用于推算全部条目的 PDF 覆盖率。
 
 ## PDF Downloader
 
