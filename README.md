@@ -119,7 +119,7 @@ OpenAlex 默认搜索 25 个候选，并为最多 8 个姓名兼容候选查询�
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 # 独立、显式联网测试；需要可访问公开 API，可按需设置上述密钥和 CA 环境变量
-PYTHONPATH=src python3 tests/live_check.py --name "<professor name>" --university "<university>"
+PYTHONPATH=src python3 scripts/ops/live_check.py --name "<professor name>" --university "<university>"
 ```
 
 Mock 测试覆盖多语言和不同研究领域的合成作者同名隔离、缺失学校与不匹配学校、历史机构、ORCID 冲突、DOI 规范化、共同作者、OpenAlex 本人机构提取、CLI 输出以及 DBLP HTML/JSON/HTTP 错误。联网检查使用传入的姓名和学校，验证输出结构、置信度范围以及学校未知时不能 resolved 等规则，不断言固定 Author ID。它是接口集成检查，不能证明真实身份匹配正确；独立的真实身份评估需要人工核验的数据集。数据源重复身份仍可能导致 ambiguous，来源异常会明确显示。
