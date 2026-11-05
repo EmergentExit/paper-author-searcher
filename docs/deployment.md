@@ -286,6 +286,23 @@ cloudflared 的 `config.yml` 要在兜底的 404 规则之前加一条：
 
 验证：`grpcurl -proto proto/paper_author_searcher/rpc/v1/paper_search.proto grpc.example.com:443 grpc.health.v1.Health/Check`。如果返回 `SERVING`，说明整条链路通了。
 
+### MCP 与 Cloudflare Tunnel
+
+MCP 服务（[MCP 服务](mcp.md)）由 `mcp` 服务提供，用 `--profile mcp` 启动，监听本机的 127.0.0.1:8090。它是普通的 HTTP 服务，Tunnel 不需要额外的协议设置，在 `.env` 里写上对外地址即可：
+
+```bash
+MCP_PUBLIC_URL=https://paper-searcher.fyi/mcp
+MCP_ALLOWED_HOSTS=paper-searcher.fyi,127.0.0.1:*,localhost:*
+```
+
+cloudflared 的 `config.yml` 要在网站那条规则之前，加一条按路径转发的规则：
+
+```yaml
+  - hostname: paper-searcher.fyi
+    path: ^/(mcp|\.well-known/oauth-protected-resource)
+    service: http://127.0.0.1:8090
+```
+
 ### 备份和恢复
 
 `backup` 服务每天生成一份归档到 `deploy/backups`，保留 14 份。内容是任务库、限流库、API 密钥哈希和本地文件，并带 SHA-256 校验。索引和 HTTP 缓存不备份，它们可以重新生成。

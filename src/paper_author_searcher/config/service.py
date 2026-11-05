@@ -1,4 +1,4 @@
-"""The search service: HTTP and gRPC front ends, job queue and workers, result and file storage, index refresh.
+"""The search service: HTTP, gRPC and MCP front ends, job queue and workers, result and file storage, index refresh.
 
 Every field can be set as ``PAPER_SEARCH__SERVICE__<FIELD>``; object-store credentials come from
 ``AWS_ACCESS_KEY_ID`` and ``AWS_SECRET_ACCESS_KEY`` (settings.Credentials), never from here.
@@ -57,6 +57,18 @@ class ServiceConfig:
     grpc_tls_certificate_file: str = ''
     grpc_tls_key_file: str = ''
     grpc_chunk_bytes: int = 64 * 1024
+    # MCP front end (paper-search-api serve-mcp): Streamable HTTP at mcp_path, for AI assistants. Callers send an API
+    # key as a bearer token. mcp_public_url is the address clients use (the OAuth resource identifier the server
+    # advertises); mcp_allowed_hosts are the Host headers it answers (DNS-rebinding protection; "name:*" = any port).
+    # A status call may wait up to mcp_maximum_wait_seconds for a search to change, looking every mcp_poll_seconds;
+    # keep it under the proxy's request limit (Cloudflare: about 100 seconds).
+    mcp_host: str = '127.0.0.1'
+    mcp_port: int = 8090
+    mcp_path: str = '/mcp'
+    mcp_public_url: str = 'http://127.0.0.1:8090/mcp'
+    mcp_allowed_hosts: tuple[str, ...] = ('127.0.0.1:*', 'localhost:*')
+    mcp_maximum_wait_seconds: float = 50.0
+    mcp_poll_seconds: float = 2.0
     # Per API key: searches waiting or running at once, and submitted in the last hour (0: no limit). A refusal is
     # 429 with Retry-After. Each search costs real money, so a runaway caller must stop by itself.
     maximum_active_searches: int = 20
@@ -132,8 +144,10 @@ class ServiceConfig:
             raise ValueError('file_store s3 needs s3_endpoint and s3_bucket')
         if self.workers < 0 or not 0 < self.port <= MAXIMUM_TCP_PORT:
             raise ValueError('workers must not be negative and port must be a TCP port')
-        if not 0 < self.grpc_port <= MAXIMUM_TCP_PORT:
-            raise ValueError('grpc_port must be a TCP port')
+        if not (0 < self.grpc_port <= MAXIMUM_TCP_PORT and 0 < self.mcp_port <= MAXIMUM_TCP_PORT):
+            raise ValueError('grpc_port and mcp_port must be TCP ports')
+        if not self.mcp_path.startswith('/'):
+            raise ValueError('mcp_path must start with /')
         if bool(self.grpc_tls_certificate_file) != bool(self.grpc_tls_key_file):
             raise ValueError('grpc_tls_certificate_file and grpc_tls_key_file are set together')
         for name in (
@@ -148,6 +162,8 @@ class ServiceConfig:
             'housekeeping_hours',
             'grpc_threads',
             'grpc_chunk_bytes',
+            'mcp_maximum_wait_seconds',
+            'mcp_poll_seconds',
         ):
             if getattr(self, name) <= 0:
                 raise ValueError(f'{name} must be positive')
