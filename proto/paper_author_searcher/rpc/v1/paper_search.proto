@@ -1,0 +1,396 @@
+// The paper-search service over gRPC (contract v1).
+//
+// Find every paper by one researcher: submit a search, wait for it to finish (poll GetSearch), then read the
+// result, or GetAgentResult for what a cold-email agent may cite. The same service answers the REST API
+// (/v1/searches); both front ends share one job store, validation and result views, so a search started on one is
+// visible on the other with the same API key.
+//
+// Authentication: every call carries the metadata "authorization: Bearer <API key>".
+// Errors: standard gRPC status codes; the trailing metadata "error-code" holds the service's own code (for
+// example "too_many_active_searches"), and "retry-after-seconds" says when a RESOURCE_EXHAUSTED call may retry.
+//
+// Searches take minutes. Poll GetSearch every few seconds rather than holding one call open: calls through the
+// public endpoint are limited to about 100 seconds.
+syntax = "proto3";
+
+package paper_searcher.v1;
+
+import "google/protobuf/descriptor.proto";
+import "google/protobuf/timestamp.proto";
+
+// The REST value an enum value stands for (the server maps between the two; clients can ignore it).
+extend google.protobuf.EnumValueOptions {
+  string rest_value = 50001;
+}
+
+service PaperSearch {
+  // Queue a search. Returns the new search (status QUEUED). A retry with the same idempotency_key and request
+  // returns the search the first call created instead of starting another.
+  rpc CreateSearch(CreateSearchRequest) returns (Search);
+  // A search: where it stands, and its result once it has SUCCEEDED.
+  rpc GetSearch(GetSearchRequest) returns (Search);
+  // Pick one of a NEEDS_CONFIRMATION search's candidates; the search is queued again for that person.
+  rpc ConfirmSearch(ConfirmSearchRequest) returns (Search);
+  // Stop a search that is queued, running or waiting for confirmation.
+  rpc CancelSearch(CancelSearchRequest) returns (Search);
+  // What the cold-email agent may cite (papers), and what it must not (withheld).
+  rpc GetAgentResult(GetAgentResultRequest) returns (AgentResult);
+  // A returned paper's checked PDF (full_text.status FILE), in chunks; or one message with a short-lived URL
+  // when the deployment keeps files in an object store.
+  rpc DownloadPaperPdf(DownloadPaperPdfRequest) returns (stream PdfChunk);
+}
+
+// Requests
+
+message CreateSearchRequest {
+  SearchRequest search = 1;
+  // 1-255 characters; optional.
+  string idempotency_key = 2;
+}
+
+message GetSearchRequest {
+  string search_id = 1;
+  // Also return papers whose ownership could not be verified, whatever the search request asked.
+  optional bool include_needs_review = 2;
+}
+
+message ConfirmSearchRequest {
+  string search_id = 1;
+  // One of a candidate's selections ("source:author_id").
+  string selection = 2;
+  string idempotency_key = 3;
+}
+
+message CancelSearchRequest {
+  string search_id = 1;
+}
+
+message GetAgentResultRequest {
+  string search_id = 1;
+}
+
+message DownloadPaperPdfRequest {
+  string search_id = 1;
+  // A paper's or edition's id from the result.
+  string paper_id = 2;
+}
+
+message PdfChunk {
+  oneof content {
+    bytes data = 1;
+    string url = 2;
+  }
+}
+
+// The search request (the REST search-request schema).
+
+message SearchRequest {
+  // Required, 1-200 characters (an empty string is a missing name).
+  string name = 1;
+  // Required, 1-300 characters.
+  string university = 2;
+  optional string department = 3;
+  // Hints sharply reduce namesake ambiguity.
+  Hints hints = 4;
+  // Default FULL.
+  Mode mode = 5;
+  // Default CONFIRM.
+  OnAmbiguity on_ambiguity = 6;
+  // Also return papers whose ownership could not be verified (NEEDS_REVIEW). Default false.
+  optional bool include_needs_review = 7;
+  Limits limits = 8;
+}
+
+enum Mode {
+  MODE_UNSPECIFIED = 0;
+  // Papers only.
+  MODE_METADATA = 1 [(rest_value) = "metadata"];
+  // Also validated open-access links.
+  MODE_PDF_URLS = 2 [(rest_value) = "pdf-urls"];
+  // Also download and check each file.
+  MODE_FULL = 3 [(rest_value) = "full"];
+}
+
+enum OnAmbiguity {
+  ON_AMBIGUITY_UNSPECIFIED = 0;
+  // Stop with the candidate list when namesakes cannot be told apart (status NEEDS_CONFIRMATION).
+  ON_AMBIGUITY_CONFIRM = 1 [(rest_value) = "confirm"];
+  // Collect every close candidate's papers, all as NEEDS_REVIEW.
+  ON_AMBIGUITY_COLLECT_CONTENDERS = 2 [(rest_value) = "collect_contenders"];
+}
+
+message Hints {
+  // 0000-0000-0000-000X, optionally as an https://orcid.org/ URL.
+  optional string orcid = 1;
+  optional string homepage = 2;
+  optional string email = 3;
+  optional string scholar_url = 4;
+  repeated string profile_urls = 5;
+  repeated string publication_pages = 6;
+  repeated string known_papers = 7;
+  repeated string research_interests = 8;
+  repeated string university_aliases = 9;
+  // Schools the researcher studied or worked at before (PhD, postdoc, an earlier post).
+  repeated string previous_universities = 10;
+}
+
+message Limits {
+  optional int32 max_pdf_papers = 1;
+  optional int32 max_downloads = 2;
+}
+
+// A search (the REST search schema).
+
+message Search {
+  string id = 1;
+  SearchStatus status = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp updated_at = 4;
+  SearchRequest request = 5;
+  // The candidate selection a confirmation picked.
+  optional string selection = 6;
+  // While QUEUED or RUNNING.
+  Progress progress = 7;
+  // The namesakes to choose from (NEEDS_CONFIRMATION).
+  repeated Candidate candidates = 8;
+  // Once SUCCEEDED.
+  SearchResult result = 9;
+  // Once FAILED.
+  Failure error = 10;
+}
+
+enum SearchStatus {
+  SEARCH_STATUS_UNSPECIFIED = 0;
+  SEARCH_STATUS_QUEUED = 1 [(rest_value) = "queued"];
+  SEARCH_STATUS_RUNNING = 2 [(rest_value) = "running"];
+  SEARCH_STATUS_NEEDS_CONFIRMATION = 3 [(rest_value) = "needs_confirmation"];
+  SEARCH_STATUS_SUCCEEDED = 4 [(rest_value) = "succeeded"];
+  SEARCH_STATUS_FAILED = 5 [(rest_value) = "failed"];
+  SEARCH_STATUS_CANCELLED = 6 [(rest_value) = "cancelled"];
+}
+
+message Progress {
+  string stage = 1;
+  optional int32 completed = 2;
+  optional int32 total = 3;
+}
+
+message Candidate {
+  string name = 1;
+  // Values for ConfirmSearchRequest.selection.
+  repeated string selections = 2;
+  repeated string affiliations = 3;
+  optional string orcid = 4;
+  optional double match_score = 5;
+  repeated string evidence = 6;
+}
+
+message Failure {
+  string code = 1;
+  string message = 2;
+  repeated string details = 3;
+}
+
+message SearchResult {
+  RunStatus run_status = 1;
+  Identity identity = 2;
+  repeated Paper papers = 3;
+  Statistics statistics = 4;
+  repeated string warnings = 5;
+  repeated Notice notices = 6;
+}
+
+enum RunStatus {
+  RUN_STATUS_UNSPECIFIED = 0;
+  RUN_STATUS_COMPLETED = 1 [(rest_value) = "completed"];
+  // Some sources did not answer; the list may be incomplete.
+  RUN_STATUS_PARTIAL = 2 [(rest_value) = "partial"];
+}
+
+message Identity {
+  optional string name = 1;
+  optional string status = 2;
+  optional string orcid = 3;
+  // Source name to that source's author ID.
+  map<string, string> author_ids = 4;
+  optional double confidence = 5;
+  repeated string evidence = 6;
+}
+
+message Paper {
+  string id = 1;
+  string title = 2;
+  repeated string authors = 3;
+  optional int32 year = 4;
+  optional string venue = 5;
+  optional string doi = 6;
+  optional string abstract = 7;
+  OwnershipStatus ownership_status = 8;
+  Confidence confidence = 9;
+  // The ownership findings behind the confidence.
+  repeated string evidence = 10;
+  FullText full_text = 11;
+  // Other editions of the same work (preprint, proceedings, journal), each with its own full text.
+  repeated Edition editions = 12;
+}
+
+enum OwnershipStatus {
+  OWNERSHIP_STATUS_UNSPECIFIED = 0;
+  OWNERSHIP_STATUS_VERIFIED = 1 [(rest_value) = "verified"];
+  OWNERSHIP_STATUS_NEEDS_REVIEW = 2 [(rest_value) = "needs_review"];
+}
+
+enum Confidence {
+  CONFIDENCE_UNSPECIFIED = 0;
+  // The person's own list, a paper-level ORCID or a curated profile backs it.
+  CONFIDENCE_HIGH = 1 [(rest_value) = "high"];
+  // Author ID, byline and institution agree.
+  CONFIDENCE_MEDIUM = 2 [(rest_value) = "medium"];
+  // Not verified (NEEDS_REVIEW).
+  CONFIDENCE_LOW = 3 [(rest_value) = "low"];
+}
+
+message Edition {
+  string id = 1;
+  string title = 2;
+  optional int32 year = 3;
+  optional string venue = 4;
+  optional string doi = 5;
+  FullText full_text = 6;
+}
+
+message FullText {
+  FullTextStatus status = 1;
+  // A validated open-access URL (LINK) or the file's source (FILE).
+  optional string url = 2;
+  optional string version = 3;
+  // The REST path of the checked PDF; over gRPC use DownloadPaperPdf with the paper's id.
+  optional string download = 4;
+  // With status NONE: a link tied to this paper that the site refused to a program; it usually opens in a browser.
+  optional string browser_url = 5;
+  // Where a person can open the paper at its publisher, from its DOI; the service never fetches it.
+  PublisherLink publisher_link = 6;
+}
+
+enum FullTextStatus {
+  FULL_TEXT_STATUS_UNSPECIFIED = 0;
+  // Downloaded and checked to be this paper.
+  FULL_TEXT_STATUS_FILE = 1 [(rest_value) = "file"];
+  // A validated open-access URL.
+  FULL_TEXT_STATUS_LINK = 2 [(rest_value) = "link"];
+  FULL_TEXT_STATUS_NONE = 3 [(rest_value) = "none"];
+}
+
+message PublisherLink {
+  string url = 1;
+  PublisherLinkKind kind = 2;
+  optional string publisher = 3;
+}
+
+enum PublisherLinkKind {
+  PUBLISHER_LINK_KIND_UNSPECIFIED = 0;
+  // The publisher's PDF address (free to read in a browser at publishers such as ACM).
+  PUBLISHER_LINK_KIND_PDF = 1 [(rest_value) = "pdf"];
+  // The DOI's landing page, where the publisher decides what a reader gets.
+  PUBLISHER_LINK_KIND_PAGE = 2 [(rest_value) = "page"];
+}
+
+message Statistics {
+  int32 papers = 1;
+  int32 verified = 2;
+  int32 full_text_files = 3;
+  int32 full_text_links = 4;
+}
+
+message Notice {
+  string code = 1;
+  string message = 2;
+}
+
+// What the cold-email agent may use (the REST agent-result schema). Cite only papers; never cite withheld.
+
+message AgentResult {
+  string search_id = 1;
+  AgentStatus status = 2;
+  // True only when papers is not empty.
+  bool usable = 3;
+  Researcher researcher = 4;
+  repeated AgentPaper papers = 5;
+  repeated WithheldPaper withheld = 6;
+  repeated string notes = 7;
+}
+
+enum AgentStatus {
+  AGENT_STATUS_UNSPECIFIED = 0;
+  // Papers to cite.
+  AGENT_STATUS_READY = 1 [(rest_value) = "ready"];
+  // Finished, but nothing passed the checks.
+  AGENT_STATUS_NOTHING_USABLE = 2 [(rest_value) = "nothing_usable"];
+  AGENT_STATUS_PENDING = 3 [(rest_value) = "pending"];
+  // A person must pick among namesakes (ConfirmSearch).
+  AGENT_STATUS_NEEDS_CONFIRMATION = 4 [(rest_value) = "needs_confirmation"];
+  AGENT_STATUS_FAILED = 5 [(rest_value) = "failed"];
+  // Its owner stopped it.
+  AGENT_STATUS_CANCELLED = 6 [(rest_value) = "cancelled"];
+}
+
+message Researcher {
+  RequestedResearcher requested = 1;
+  // Unset until the search has SUCCEEDED.
+  AgentIdentity identity = 2;
+}
+
+message RequestedResearcher {
+  optional string name = 1;
+  optional string university = 2;
+  optional string department = 3;
+}
+
+message AgentIdentity {
+  bool confirmed = 1;
+  ConfirmedBy confirmed_by = 2;
+  optional string name = 3;
+  optional string orcid = 4;
+  map<string, string> author_ids = 5;
+  optional double confidence = 6;
+  repeated string evidence = 7;
+}
+
+enum ConfirmedBy {
+  // Unconfirmed.
+  CONFIRMED_BY_UNSPECIFIED = 0;
+  // Resolved from the sources.
+  CONFIRMED_BY_EVIDENCE = 1 [(rest_value) = "evidence"];
+  // A person picked it (ConfirmSearch).
+  CONFIRMED_BY_CALLER = 2 [(rest_value) = "caller"];
+}
+
+message AgentPaper {
+  string id = 1;
+  string title = 2;
+  optional int32 year = 3;
+  optional string venue = 4;
+  repeated string authors = 5;
+  optional string abstract = 6;
+  optional string doi = 7;
+  // The DOI link, when there is a DOI.
+  optional string url = 8;
+  FullText full_text = 9;
+  // HIGH or MEDIUM.
+  Confidence confidence = 10;
+  repeated string evidence = 11;
+}
+
+message WithheldPaper {
+  string id = 1;
+  string title = 2;
+  optional int32 year = 3;
+  WithheldReason reason = 4;
+  repeated string evidence = 5;
+}
+
+enum WithheldReason {
+  WITHHELD_REASON_UNSPECIFIED = 0;
+  WITHHELD_REASON_IDENTITY_UNCONFIRMED = 1 [(rest_value) = "identity_unconfirmed"];
+  WITHHELD_REASON_OWNERSHIP_UNVERIFIED = 2 [(rest_value) = "ownership_unverified"];
+}

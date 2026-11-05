@@ -252,6 +252,40 @@ sudo netfilter-persistent save
 
 要节省 Tavily 额度，调低 `PAPER_SEARCH__PDF__WEB_SEARCH_MAXIMUM_PAPERS`（默认 50）。
 
+### gRPC 与 Cloudflare Tunnel
+
+gRPC 接口（[gRPC API](grpc.md)）由 `grpc` 服务提供，用 `--profile grpc` 启动，只监听本机的 127.0.0.1:50051。要从公网访问，需要经过 Cloudflare Tunnel。
+
+Tunnel 转发 gRPC 有三个条件，少一个都会出问题：客户端只收到空的 200 响应，或者报 `server closed the stream without sending trailers`。
+
+1. **本地服务必须开 TLS。** cloudflared 连本地服务时，只有在 `https://` 下才会用 HTTP/2，而 gRPC 只能跑在 HTTP/2 上。明文 HTTP/2（h2c）不受支持。本地的证书自签就行，因为这段连接只在本机内部。
+2. **ingress 规则要打开 `http2Origin`。**
+3. **cloudflared 要用 `--protocol http2`。** 默认的 QUIC 传输不会转发 gRPC 的 trailers（[cloudflared#1641](https://github.com/cloudflare/cloudflared/issues/1641)）。
+
+另外，Cloudflare 控制台里该域名的 **Network → gRPC** 开关要打开。
+
+生成本地证书，放进密钥目录（`SECRETS_DIRECTORY`）。容器以 uid 10001 运行，所以私钥要让它能读：
+
+```bash
+openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj /CN=localhost -addext subjectAltName=DNS:localhost -keyout "$SECRETS_DIRECTORY/grpc-origin.key" -out "$SECRETS_DIRECTORY/grpc-origin.crt"
+```
+
+cloudflared 的 `config.yml` 要在兜底的 404 规则之前加一条：
+
+```yaml
+  - hostname: grpc.example.com
+    service: https://127.0.0.1:50051
+    originRequest:
+      http2Origin: true
+      # 只信任这张自签证书，而不是关闭校验（noTLSVerify）
+      caPool: /path/to/secrets/grpc-origin.crt
+      originServerName: localhost
+```
+
+然后给这个子域名建 DNS 记录：`cloudflared tunnel route dns <tunnel> grpc.example.com`。cloudflared 启动时要带 `--protocol http2`。
+
+验证：`grpcurl -proto proto/paper_author_searcher/rpc/v1/paper_search.proto grpc.example.com:443 grpc.health.v1.Health/Check`。如果返回 `SERVING`，说明整条链路通了。
+
 ### 备份和恢复
 
 `backup` 服务每天生成一份归档到 `deploy/backups`，保留 14 份。内容是任务库、限流库、API 密钥哈希和本地文件，并带 SHA-256 校验。索引和 HTTP 缓存不备份，它们可以重新生成。
