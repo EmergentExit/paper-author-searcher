@@ -13,6 +13,8 @@ dist/
 output
 tmp/
 .hypothesis/
+.mypy_cache/
+.ruff_cache/
 # Deployment state on a server: secrets, the filled-in alert routes, local archives.
 deploy/secrets/
 deploy/backups/
