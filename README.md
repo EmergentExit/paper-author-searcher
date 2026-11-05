@@ -242,7 +242,7 @@ PYTHONPATH=src python3 -m paper_author_searcher.pdf_cli \
 
 # 小规模验证：按保存顺序处理前 5 篇符合归属条件的论文
 PYTHONPATH=src python3 -m paper_author_searcher.pdf_cli \
-  --input hinton_papers.authorship.json --output hinton_papers.pdf_urls.sample.json \
+  --input ../paper-test-must/samples/hinton/hinton_papers.authorship.json --output ../paper-test-must/samples/hinton/hinton_papers.pdf_urls.sample.json \
   --max-papers 5 --timeout 8 --retries 1
 
 # 明确包含待审核论文；Unpaywall 需要真实联系邮箱
@@ -273,7 +273,7 @@ PYTHONPATH=src python3 -m paper_author_searcher.pdf_cli \
 
 接口依据：[OpenAlex Locations](https://help.openalex.org/data/locations/)、[Semantic Scholar 官方 API](https://api.semanticscholar.org/api-docs/graph)、[Unpaywall 数据字段](https://unpaywall.org/data-format)、[Unpaywall API 邮箱要求](https://data.unpaywall.org/products/api)、[arXiv API](https://info.arxiv.org/help/api/user-manual.html)。
 
-本次小规模真实测试及访问限制见 [测试报告](reports/pdf_url_sample.md)；全部候选、HTTP 文件头观察和未处理状态见 [URL JSON](hinton_papers.pdf_urls.sample.json)。在归档顺序的前 5 篇已确认归属论文中，1 个 URL 同时通过文件头及论文元数据核对；该样本不能用于推算全部条目的 PDF 覆盖率。
+本次小规模真实测试及访问限制见 [测试报告](reports/pdf_url_sample.md)；全部候选、HTTP 文件头观察和未处理状态见 URL JSON（已移出仓库，位于 `paper-test-must/samples/hinton/hinton_papers.pdf_urls.sample.json`）。在归档顺序的前 5 篇已确认归属论文中，1 个 URL 同时通过文件头及论文元数据核对；该样本不能用于推算全部条目的 PDF 覆盖率。
 
 ## PDF Downloader
 
