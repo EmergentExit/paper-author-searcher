@@ -21,6 +21,7 @@ from .matching import (
 )
 from .models import AnchorEvidence, ProfessorProfile, ResolutionResult
 from .status import AnchorKind, ResolutionStatus, UniversityStatus
+from .timings import phase
 
 logger = logging.getLogger(__name__)
 
@@ -67,19 +68,27 @@ class ProfessorResolver:
 
     def rank(self, query):
         """Scored identity profiles, the candidate groups behind them, and per-source errors."""
-        records, errors = self._collect_candidates(query)
+        with phase('identity: candidate search'):
+            records, errors = self._collect_candidates(query)
         # The finder also discovers hints the caller did not give (identity_discovery), so it runs for every query.
-        anchors = self.anchor_finder.find(query) if self.anchor_finder else IdentityAnchors()
+        with phase('identity: anchors'):
+            anchors = self.anchor_finder.find(query) if self.anchor_finder else IdentityAnchors()
         if anchors.errors:
             errors['anchors'] = '; '.join(anchors.errors)
-        records.extend(self._anchored_records(anchors, records, errors))
-        groups = self._separate_orcid_conflicts(self._merge_anchored(self._group_candidates(records), anchors), anchors)
-        scored = sorted(
-            ((self._score(query, group, anchors), group) for group in groups),
-            key=lambda item: self.ranking.key(item[0]),
-        )
-        scored = self._disambiguate(query, scored)
-        scored = self._adjudicate(query, scored, anchors)
+        with phase('identity: anchored profile lookups'):
+            records.extend(self._anchored_records(anchors, records, errors))
+        with phase('identity: grouping and scoring'):
+            groups = self._separate_orcid_conflicts(
+                self._merge_anchored(self._group_candidates(records), anchors), anchors
+            )
+            scored = sorted(
+                ((self._score(query, group, anchors), group) for group in groups),
+                key=lambda item: self.ranking.key(item[0]),
+            )
+        with phase('identity: disambiguation'):
+            scored = self._disambiguate(query, scored)
+        with phase('identity: adjudication'):
+            scored = self._adjudicate(query, scored, anchors)
         return [profile for profile, _ in scored], [group for _, group in scored], errors
 
     def _disambiguate(self, query, scored):

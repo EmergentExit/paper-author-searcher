@@ -155,9 +155,10 @@ class DeadlineTests(unittest.TestCase):
             self.assertEqual(self.network.calls, ['get'])
 
     def test_the_container_puts_the_limit_on_the_whole_chain(self):
-        client = ServiceContainer(Settings(), RunOptions(deadline=self.deadline)).http_client
+        # Under the timing layer, which only measures: the limit covers everything below it.
+        client = ServiceContainer(Settings(), RunOptions(deadline=self.deadline)).http_client.client
         self.assertIsInstance(client, DeadlineHttpClient)
-        self.assertNotIsInstance(ServiceContainer(Settings()).http_client, DeadlineHttpClient)
+        self.assertNotIsInstance(ServiceContainer(Settings()).http_client.client, DeadlineHttpClient)
 
 
 if __name__ == '__main__':
