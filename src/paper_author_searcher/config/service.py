@@ -1,4 +1,4 @@
-"""The search service: HTTP front end, job queue and workers, result and file storage, index refresh.
+"""The search service: HTTP and gRPC front ends, job queue and workers, result and file storage, index refresh.
 
 Every field can be set as ``PAPER_SEARCH__SERVICE__<FIELD>``; object-store credentials come from
 ``AWS_ACCESS_KEY_ID`` and ``AWS_SECRET_ACCESS_KEY`` (settings.Credentials), never from here.
@@ -48,6 +48,15 @@ class ServiceConfig:
     # results say a source did not respond. OpenAlex's free quota is $1 a day. Raise it after buying more.
     maximum_daily_cost_usd: float = 1.0
     maximum_body_bytes: int = 64 * 1024
+    # gRPC front end (paper-search-api serve-grpc; contract in proto/). It speaks TLS when both files are set;
+    # Cloudflare Tunnel needs that, since it reaches a gRPC origin only over HTTP/2 with TLS. Without them it is
+    # plaintext, for local use. Calls run on grpc_threads threads; a PDF streams in grpc_chunk_bytes pieces.
+    grpc_host: str = '127.0.0.1'
+    grpc_port: int = 50051
+    grpc_threads: int = 8
+    grpc_tls_certificate_file: str = ''
+    grpc_tls_key_file: str = ''
+    grpc_chunk_bytes: int = 64 * 1024
     # Per API key: searches waiting or running at once, and submitted in the last hour (0: no limit). A refusal is
     # 429 with Retry-After. Each search costs real money, so a runaway caller must stop by itself.
     maximum_active_searches: int = 20
@@ -123,6 +132,10 @@ class ServiceConfig:
             raise ValueError('file_store s3 needs s3_endpoint and s3_bucket')
         if self.workers < 0 or not 0 < self.port <= MAXIMUM_TCP_PORT:
             raise ValueError('workers must not be negative and port must be a TCP port')
+        if not 0 < self.grpc_port <= MAXIMUM_TCP_PORT:
+            raise ValueError('grpc_port must be a TCP port')
+        if bool(self.grpc_tls_certificate_file) != bool(self.grpc_tls_key_file):
+            raise ValueError('grpc_tls_certificate_file and grpc_tls_key_file are set together')
         for name in (
             'maximum_cost_usd',
             'maximum_daily_cost_usd',
@@ -133,6 +146,8 @@ class ServiceConfig:
             'rate_limit_retry_seconds',
             'maximum_attempts',
             'housekeeping_hours',
+            'grpc_threads',
+            'grpc_chunk_bytes',
         ):
             if getattr(self, name) <= 0:
                 raise ValueError(f'{name} must be positive')

@@ -32,7 +32,7 @@ from paper_author_searcher.service.facade import SearchService
 from paper_author_searcher.service.metrics import RequestCounter, render
 from paper_author_searcher.service.model import ErrorKind, Job, JobStatus, ServiceError
 from paper_author_searcher.service.ports import StoredFile
-from paper_author_searcher.service.results import ResultView
+from paper_author_searcher.service.views import INCLUDE_NEEDS_REVIEW, search_view
 
 from .auth import ApiKey, ApiKeys
 from .schema import API_VERSION, SCHEMA_NAMES, schema, validator
@@ -49,8 +49,7 @@ STATUS_OF: dict[str, int] = {
     ErrorKind.RATE_LIMITED: 429,
 }
 
-# The request field and the query parameter that ask for needs-review papers in a result.
-INCLUDE_NEEDS_REVIEW = 'include_needs_review'
+# The query parameter that asks for needs-review papers in a result (named as the request field).
 TRUE_VALUES = frozenset({'1', 'true', 'yes'})
 
 
@@ -268,24 +267,7 @@ def link(job: Job) -> str:
 
 def resource(job: Job, include_needs_review: bool | None = None) -> dict[str, Any]:
     """The job as schema v1 ``search``; ``include_needs_review`` overrides the request's own choice."""
-    body: dict[str, Any] = {
-        'api_version': API_VERSION,
-        'id': job.id,
-        'status': job.status,
-        'created_at': job.created_at,
-        'updated_at': job.updated_at,
-        'request': job.request,
-        'selection': job.selection,
-        'progress': job.progress if job.status in (JobStatus.QUEUED, JobStatus.RUNNING) else None,
-        'links': {'self': link(job)},
-    }
-    if job.candidates:
-        body['candidates'] = job.candidates
+    links = {'self': link(job)}
     if job.status == JobStatus.NEEDS_CONFIRMATION:
-        body['links']['confirmation'] = link(job) + '/confirmation'
-    if job.status == JobStatus.SUCCEEDED and job.result is not None:
-        include = bool(job.request.get(INCLUDE_NEEDS_REVIEW)) if include_needs_review is None else include_needs_review
-        body['result'] = ResultView.visible(job.result, include)
-    if job.status == JobStatus.FAILED and job.error is not None:
-        body['error'] = job.error
-    return body
+        links['confirmation'] = link(job) + '/confirmation'
+    return {'api_version': API_VERSION, **search_view(job, include_needs_review), 'links': links}

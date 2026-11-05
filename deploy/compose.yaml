@@ -4,6 +4,7 @@
 # docker compose -f deploy/compose.yaml --profile public up -d      ... with HTTPS on ports 80 and 443 (SITE_ADDRESS)
 # docker compose -f deploy/compose.yaml --profile s3 up -d          ... with an S3-compatible store for PDFs
 # docker compose -f deploy/compose.yaml --profile monitoring up -d  ... with Prometheus and Alertmanager
+# docker compose -f deploy/compose.yaml --profile grpc up -d        ... with the gRPC API on 127.0.0.1:50051 (TLS)
 # docker compose -f deploy/compose.yaml up -d --scale worker=3      more searches at once
 name: paper-search
 
@@ -48,6 +49,28 @@ services:
     command: ["serve", "--workers", "0"]
     ports:
       - "127.0.0.1:${API_LOCAL_PORT:-8080}:8080"
+
+  grpc:
+    <<: *service
+    # The gRPC API (proto/paper_author_searcher/rpc/v1/paper_search.proto) over the same jobs; profile "grpc".
+    # TLS with the origin certificate in the secrets directory (docs/deployment.md): Cloudflare Tunnel reaches a
+    # gRPC origin only over HTTP/2 with TLS.
+    profiles: ["grpc"]
+    command: ["serve-grpc"]
+    environment:
+      PAPER_SEARCH_SECRETS_DIRECTORY: /run/secrets
+      PAPER_SEARCH__SERVICE__GRPC_HOST: 0.0.0.0
+      PAPER_SEARCH__SERVICE__GRPC_TLS_CERTIFICATE_FILE: /run/secrets/grpc-origin.crt
+      PAPER_SEARCH__SERVICE__GRPC_TLS_KEY_FILE: /run/secrets/grpc-origin.key
+    ports:
+      - "127.0.0.1:${GRPC_LOCAL_PORT:-50051}:50051"
+    healthcheck:
+      test: ["CMD", "paper-search-api", "serve-grpc", "--check"]
+      interval: 30s
+      timeout: 6s
+      start_period: 10s
+      retries: 3
+    stop_grace_period: 15s
 
   worker:
     <<: *service
