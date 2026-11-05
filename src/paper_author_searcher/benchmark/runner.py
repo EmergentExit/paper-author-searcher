@@ -1,6 +1,7 @@
 """Run the search system once per benchmark person and keep a resumable run index."""
 
 import logging
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
@@ -207,6 +208,7 @@ class BenchmarkRunner:
                 continue
             self.progress(f'[{position}/{len(people)}] {person.person_id} searching')
             entry: dict[str, Any] = {'started_at': _now(), 'status': RunStatus.RUNNING}
+            started = time.perf_counter()
             index['people'][person.person_id] = entry
             write_json(index_path, index)
             try:
@@ -228,6 +230,7 @@ class BenchmarkRunner:
                 entry['status'] = RunStatus.FAILED
                 entry['error'] = f'{type(exc).__name__}: {exc}'
             entry['finished_at'] = _now()
+            entry['elapsed_seconds'] = round(time.perf_counter() - started, 1)
             write_json(index_path, index)
             self.progress('[{}/{}] {} {}'.format(position, len(people), person.person_id, entry['status']))
         index['updated_at'] = _now()

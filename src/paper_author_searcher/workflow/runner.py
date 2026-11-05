@@ -2,6 +2,7 @@
 
 import logging
 import re
+import time
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import asdict
@@ -22,6 +23,7 @@ from paper_author_searcher.models import ProfessorQuery
 from paper_author_searcher.paper_collector import IdentityConfirmationRequired
 from paper_author_searcher.performance_diagnostics import workflow_outcomes
 from paper_author_searcher.status import RunStatus
+from paper_author_searcher.timings import HttpMeter, PhaseTimings, phase, recording
 
 from .checkpoints import _paper_entries, metadata_audit
 from .stages import (
@@ -53,6 +55,7 @@ class PaperSearchWorkflow:
         stages: Sequence[WorkflowStage] | None = None,
         storage: StorageConfig = DEFAULT_STORAGE,
         query_expander: Callable[[ProfessorQuery], ProfessorQuery] | None = None,
+        http_meter: HttpMeter | None = None,
     ) -> None:
         self.query_expander = query_expander
         self.resolver = resolver
@@ -65,6 +68,8 @@ class PaperSearchWorkflow:
         self.current_stage = IDENTITY_STAGE
         self._stages = list(stages) if stages is not None else None
         self.storage = storage
+        # Optional: the meter of the HTTP client the services share; each report records its own share of it.
+        self.http_meter = http_meter
 
     @property
     def stages(self) -> list[WorkflowStage]:
@@ -148,15 +153,20 @@ class PaperSearchWorkflow:
         write_json(root / 'report.json', report)
         context = RunContext(request, root, report, self._progress, compact_artifacts=self.storage.compact_artifacts)
         self.current_stage = IDENTITY_STAGE
+        timings = PhaseTimings()
+        http_before = self.http_meter.snapshot() if self.http_meter else None
+        started = time.perf_counter()
         try:
-            for stage in self.stages:
-                if not stage.applies(context):
-                    continue
-                self.current_stage = stage.name
-                stage.run(context)
-                if context.halted:
-                    return report
-            self._finish(context)
+            with recording(timings):
+                for stage in self.stages:
+                    if not stage.applies(context):
+                        continue
+                    self.current_stage = stage.name
+                    with phase('stage: ' + stage.name):
+                        stage.run(context)
+                    if context.halted:
+                        return report
+                self._finish(context)
         except IdentityConfirmationRequired as exc:
             report['run_status'] = RunStatus.IDENTITY_CONFIRMATION_REQUIRED
             report['errors'].append({'stage': self.current_stage, 'error': str(exc)})
@@ -171,10 +181,23 @@ class PaperSearchWorkflow:
             report['run_status'] = RunStatus.FAILED
             report['errors'].append({'stage': self.current_stage, 'error': str(exc)})
         finally:
+            report['timings'] = self._timings(timings, started, http_before)
             report['outcomes'] = workflow_outcomes(report)
             report['similarity_caches'] = similarity_cache_statistics()
             write_json(root / 'report.json', report)
         return report
+
+    def _timings(self, timings: PhaseTimings, started: float, http_before: dict[str, Any] | None) -> JSONObject:
+        """Where this run spent its time; measurement only, it changes no decision."""
+        return {
+            'total_seconds': round(time.perf_counter() - started, 3),
+            'phases': timings.to_dict(),
+            'http_hosts': self.http_meter.since(http_before) if self.http_meter else {},
+            'scope': (
+                'Wall-clock seconds. Phases nest (a stage holds its steps), so they do not add up to the total; '
+                'HTTP seconds include pacing waits, retries and cache reads, and parallel requests overlap'
+            ),
+        }
 
     def _finish(self, context: RunContext) -> None:
         report, pdf, manifest = context.report, context.pdf, context.manifest

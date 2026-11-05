@@ -19,6 +19,7 @@ from .paper_ownership import PaperOwnershipValidator
 from .paper_providers import PaperProvider
 from .raw_metadata import apply_policy
 from .status import IdentityConfirmation, OwnershipStatus, ResolutionStatus
+from .timings import phase
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +168,10 @@ class PaperCollector:
         limits = {name: self.concurrency.get(name, 1) for name in available}
         gates = {name: threading.BoundedSemaphore(limit) for name, limit in limits.items()}
         workers = max(1, min(len(tasks), sum(limits.values())))
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='paper-collection') as pool:
+        with (
+            phase('collection: author ID sources'),
+            ThreadPoolExecutor(max_workers=workers, thread_name_prefix='paper-collection') as pool,
+        ):
             futures = {}
             for provider, author_id in tasks:
                 future = pool.submit(self._collect_one, provider, author_id, gates[provider.name])
@@ -184,13 +188,15 @@ class PaperCollector:
         for fetched in sources:
             records.extend(fetched.papers)
         if confirmation == ResolutionStatus.AMBIGUOUS_CONTENDERS and self.adjudicator is not None:
-            winner = self.adjudicator.choose(profile, records)
+            with phase('collection: department adjudication'):
+                winner = self.adjudicator.choose(profile, records)
             if winner is not None:
                 profile, selected, records = self._settle(profile, winner, records)
                 confirmation = IdentityConfirmation.DEPARTMENT
         if confirmation != ResolutionStatus.AMBIGUOUS_CONTENDERS:
             for search in self.name_searches:
-                found = search.collect(profile)
+                with phase('collection: name search ' + search.name):
+                    found = search.collect(profile)
                 sources.append(found)
                 records.extend(found.papers)
                 key = search.author_key(profile)
@@ -198,16 +204,19 @@ class PaperCollector:
                 aliases = {**profile.author_id_aliases, search.name: selected[search.name]}
                 profile = replace(profile, author_id_aliases=aliases)
         if self.listed_works is not None and confirmation != ResolutionStatus.AMBIGUOUS_CONTENDERS:
-            listed = self.listed_works.retrieve(profile, records)
+            with phase('collection: listed works'):
+                listed = self.listed_works.retrieve(profile, records)
             sources.append(listed)
             records.extend(listed.papers)
         complete = bool(sources) and all(fetched.complete for fetched in sources)
         if progress:
             progress('Deduplicating papers', len(records), len(records))
-        papers = deduplicate_papers(records, self.deduplication)
+        with phase('collection: deduplication'):
+            papers = deduplicate_papers(records, self.deduplication)
         if progress:
             progress('Validating ownership', len(papers), len(papers))
-        self.ownership_validator.validate(papers, profile)
+        with phase('collection: ownership validation'):
+            self.ownership_validator.validate(papers, profile)
         apply_policy(papers, self.raw_metadata)
         if confirmation == ResolutionStatus.AMBIGUOUS_CONTENDERS:
             hold_for_review(papers, len(selected.get('openalex', [])) or sum(map(len, selected.values())))
