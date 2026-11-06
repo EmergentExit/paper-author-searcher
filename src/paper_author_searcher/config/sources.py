@@ -23,9 +23,10 @@ class HttpConfig:
         ('api.semanticscholar.org', 1.0),
         ('dspace.mit.edu', 2.0),
     )
-    # Retries after an HTTP 429 for hosts whose rate limit outlasts the default retries (backoff capped at
-    # maximum_retry_delay). Semantic Scholar's 429s come in bursts; a lookup that gives up loses an author ID.
-    rate_limit_retries: tuple[tuple[str, int], ...] = (('api.semanticscholar.org', 5),)
+    # Hosts whose 429s outlast the default retries: (host, retries, longest single wait in seconds). Semantic Scholar
+    # throttles a key in windows of up to about a minute (measured 2026-11-06: 429s for ~50 s even at one request
+    # every 3 s), and an identity lookup that gives up loses an author ID. Eight retries capped at 10 s wait ~55 s.
+    rate_limit_retries: tuple[tuple[str, int, float], ...] = (('api.semanticscholar.org', 8, 10.0),)
     # A host's 429 Retry-After holds back its later requests for at most this long (a daily quota says hours).
     maximum_host_hold_seconds: float = 60.0
 

@@ -3,7 +3,6 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from paper_author_searcher.config import DEFAULT_HTTP
 from paper_author_searcher.http import HttpClient, SourceError
 
 
@@ -75,14 +74,14 @@ class HttpTests(unittest.TestCase):
             self.assertEqual(HttpClient().get('https://dblp.org/search/author/api'), {'result': {}})
             self.assertEqual(opener.call_args[0][0].get_header('Accept'), 'application/json')
 
-    def test_semantic_scholar_429s_get_more_retries_than_other_hosts(self):
+    def test_semantic_scholar_429s_wait_out_a_throttling_window_other_hosts_keep_the_default(self):
         def limited(url):
             return HTTPError(url, 429, 'limited', {}, None)
 
-        for url, retries, expected_attempts in (
-            ('https://api.semanticscholar.org/graph/v1/paper/x', 2, 6),
-            ('https://api.openalex.org/works/x', 2, 3),
-            ('https://api.semanticscholar.org/graph/v1/paper/x', 0, 1),
+        for url, retries, expected_attempts, longest in (
+            ('https://api.semanticscholar.org/graph/v1/paper/x', 2, 9, 10.0),
+            ('https://api.openalex.org/works/x', 2, 3, 2),
+            ('https://api.semanticscholar.org/graph/v1/paper/x', 0, 1, 0),
         ):
             with self.subTest(url=url, retries=retries):
                 client = HttpClient(retries=retries)
@@ -96,7 +95,8 @@ class HttpTests(unittest.TestCase):
                 ):
                     client.get(url)
                 self.assertEqual(client.transport_statistics['metadata_get']['operation_attempts'], expected_attempts)
-                self.assertTrue(all(call.args[0] <= DEFAULT_HTTP.maximum_retry_delay for call in sleep.call_args_list))
+                waits = [call.args[0] for call in sleep.call_args_list]
+                self.assertEqual(max(waits, default=0), longest)
 
     def test_a_rate_limited_hosts_other_errors_keep_the_default_retries(self):
         url = 'https://api.semanticscholar.org/graph/v1/paper/x'

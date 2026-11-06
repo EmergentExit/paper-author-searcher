@@ -174,8 +174,9 @@ class HttpClient:
             )
         # A rate-limited host may get more retries for its 429s (HttpConfig.rate_limit_retries); a client set to
         # no retries at all keeps none.
-        rate_limited = dict(self.config.rate_limit_retries).get(request.host, self.retries) if self.retries else 0
-        rate_limited = max(rate_limited, self.retries)
+        policy = {host: (retries, wait) for host, retries, wait in self.config.rate_limit_retries}
+        rate_limited, longest_wait = policy.get(request.host, (self.retries, self.config.maximum_retry_delay))
+        rate_limited = max(rate_limited, self.retries) if self.retries else 0
         for attempt in range(max(self.retries, rate_limited) + 1):
             self._count(statistics, 'operation_attempts')
             try:
@@ -187,8 +188,10 @@ class HttpClient:
                 self._count(statistics['http_error_responses'], code)
                 retryable = exc.code in self.config.retry_statuses
                 retry_after = self._retry_after(exc)
-                wait_exceeds_budget = retry_after is not None and retry_after > self.config.maximum_retry_delay
-                allowed = rate_limited if exc.code == HTTPStatus.TOO_MANY_REQUESTS else self.retries
+                throttled = exc.code == HTTPStatus.TOO_MANY_REQUESTS
+                longest = longest_wait if throttled else self.config.maximum_retry_delay
+                wait_exceeds_budget = retry_after is not None and retry_after > longest
+                allowed = rate_limited if throttled else self.retries
                 if not retryable or attempt >= allowed or wait_exceeds_budget:
                     endpoint_host = urlsplit(exc.filename or request.full_url).hostname or request.host
                     message = f'HTTP {exc.code} from {endpoint_host}'
@@ -196,7 +199,7 @@ class HttpClient:
                     raise SourceError(
                         message, status_code=exc.code, retry_after=retry_after, endpoint_host=endpoint_host
                     ) from exc
-                delay = self._retry_delay(exc, attempt)
+                delay = min(self.config.retry_backoff_base**attempt if retry_after is None else retry_after, longest)
                 logger.info(
                     'HTTP %s from %s; retry %d/%d in %.1fs', exc.code, request.host, attempt + 1, allowed, delay
                 )
@@ -397,12 +400,6 @@ class HttpClient:
             label = 'array' if expected_type is list else 'object'
             raise SourceError(diagnostic + ': expected JSON ' + label, error_type='malformed_response')
         return parsed
-
-    def _retry_delay(self, error, attempt):
-        seconds = self._retry_after(error)
-        if seconds is None:
-            seconds = self.config.retry_backoff_base**attempt
-        return min(seconds, self.config.maximum_retry_delay)
 
     @staticmethod
     def _retry_after(error):
