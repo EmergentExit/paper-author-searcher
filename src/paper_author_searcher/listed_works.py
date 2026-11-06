@@ -5,11 +5,16 @@ so collecting the selected IDs cannot find them. The person's own list (homepage
 each listed work missing from the collection is looked up once through a chain of ``WorkLookup`` sources, stopping
 at the first that has it, and enters the collection under the work's name-compatible author with evidence saying
 why. Ownership decides afterwards (``OwnershipConfig.verify_listed_works``).
+
+Works are independent, so several are looked up at once (``ListedWorksConfig.lookup_workers``): each work still asks
+its sources in order and stops at the first that has it, so the requests and answers are those of looking them up one
+by one, and the results are kept in the works' order. Per-host pacing in the HTTP layer still applies.
 """
 
 import logging
 import xml.etree.ElementTree as ET
 from collections.abc import Callable, Iterable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from typing import Any, Protocol
 from urllib.parse import quote
@@ -352,8 +357,10 @@ class ListedWorkRetriever:
     def retrieve(self, profile: ProfessorProfile, records: Sequence[PaperRecord]) -> PaperSourceResult:
         result = PaperSourceResult(source=LISTED_SOURCE, author_id=LISTED_SOURCE_ID)
         missing = self.missing(profile, records) if self.config.enabled else []
-        for key in missing[: self.config.maximum_lookups]:
-            record = self._first(key, profile, result)
+        keys = missing[: self.config.maximum_lookups]
+        for record, errors in self._look_up_all(keys, profile):
+            # Merged in the works' order, so the result does not depend on which lookup finished first.
+            result.metadata_errors.extend(errors)
             if record is not None:
                 result.records_received += 1
                 record.attribution_evidence.append(f'{RETRIEVED_EVIDENCE} (found in {record.source})')
@@ -362,18 +369,29 @@ class ListedWorkRetriever:
         result.complete = len(missing) <= self.config.maximum_lookups and not result.metadata_errors
         return result
 
-    def _first(self, key: str, profile: ProfessorProfile, result: PaperSourceResult) -> PaperRecord | None:
-        """Chain of responsibility: the first source that has the work answers; a failing source is skipped."""
+    def _look_up_all(
+        self, keys: Sequence[str], profile: ProfessorProfile
+    ) -> list[tuple[PaperRecord | None, list[dict[str, str]]]]:
+        workers = min(self.config.lookup_workers, len(keys))
+        if workers <= 1:
+            return [self._first(key, profile) for key in keys]
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='listed-works') as pool:
+            return list(pool.map(lambda key: self._first(key, profile), keys))
+
+    def _first(self, key: str, profile: ProfessorProfile) -> tuple[PaperRecord | None, list[dict[str, str]]]:
+        """Chain of responsibility: the first source that has the work answers; a failing source is skipped and its
+        error returned with the answer."""
+        errors = []
         for lookup in self.lookups:
             try:
                 record = lookup.find(key, profile)
             except (SourceError, ValueError, TypeError) as exc:
                 log_isolated_failure(logger, 'Listed work %s lookup in %s failed: %s', key, lookup.name, exc)
-                result.metadata_errors.append({'paper_id': key, 'source': lookup.name, 'error': str(exc)})
+                errors.append({'paper_id': key, 'source': lookup.name, 'error': str(exc)})
                 continue
             if record is not None:
-                return record
-        return None
+                return record, errors
+        return None, errors
 
 
 def _missing_is_none(fetch: Any) -> Any:

@@ -157,6 +157,44 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(len(result.papers), 1)
         self.assertEqual(result.metadata_errors[0]['source'], 'broken')
 
+    def test_concurrent_lookups_keep_the_works_order_and_match_one_by_one(self):
+        import threading
+        import time
+
+        class Staggered:
+            """Earlier works answer later, so completion order is the reverse of the works' order."""
+
+            name = 'staggered'
+
+            def __init__(self, keys):
+                self.delays = {key: 0.02 * (len(keys) - index) for index, key in enumerate(keys)}
+                self.threads = set()
+
+            def find(self, key, target):
+                self.threads.add(threading.get_ident())
+                time.sleep(self.delays[key])
+                if key.endswith('3'):
+                    raise SourceError('HTTP 500', status_code=500)
+                return
+
+        keys = [f'doi:10.1000/w{index}' for index in range(6)]
+        works = {key.removeprefix('doi:'): work(f'Study {key[-1]}', key.removeprefix('doi:')) for key in keys}
+        results = {}
+        for workers in (1, 4):
+            staggered = Staggered(keys)
+            settings = ListedWorksConfig(lookup_workers=workers)
+            openalex = OpenAlexWorkLookup(OpenAlexPaperProvider(Provider(Client(works))), settings, AuthorMatcher())
+            result = ListedWorkRetriever([staggered, openalex], settings).retrieve(profile(keys), [])
+            results[workers] = ([paper.doi for paper in result.papers], result.metadata_errors, result.complete)
+            self.assertEqual(len(staggered.threads), workers)
+        self.assertEqual(results[4], results[1])
+        self.assertEqual(results[1][0], [f'10.1000/w{index}' for index in range(6)])
+        self.assertEqual([error['paper_id'] for error in results[1][1]], ['doi:10.1000/w3'])
+
+    def test_lookup_workers_must_be_positive(self):
+        with self.assertRaises(ValueError):
+            ListedWorksConfig(lookup_workers=0)
+
     def test_a_work_without_a_compatible_author_is_skipped(self):
         works = {'10.1000/x': work('Other', '10.1000/x', name='Someone Else')}
         self.assertEqual(retriever(works).retrieve(profile(['doi:10.1000/x']), []).papers, [])
