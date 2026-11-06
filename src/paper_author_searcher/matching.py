@@ -233,7 +233,7 @@ def identity_work(
 # Process-wide memo caches of the pure similarity functions (bounded LRU). A long-running service reports them
 # as metrics and may clear them, e.g. after changing matching configuration.
 # The comparison helpers and the text normalizers they rely on; all are pure, so caching never changes an answer.
-SIMILARITY_CACHES = {
+SIMILARITY_CACHES: dict[str, Any] = {
     'normalize': normalize,
     'normalize_title': normalize_title,
     'canonical_doi': canonical_doi,
