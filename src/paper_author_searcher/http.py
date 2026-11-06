@@ -172,7 +172,11 @@ class HttpClient:
                     'scope': 'Read/transfer attempts include retries; redirect hops are not individual attempts',
                 },
             )
-        for attempt in range(self.retries + 1):
+        # A rate-limited host may get more retries for its 429s (HttpConfig.rate_limit_retries); a client set to
+        # no retries at all keeps none.
+        rate_limited = dict(self.config.rate_limit_retries).get(request.host, self.retries) if self.retries else 0
+        rate_limited = max(rate_limited, self.retries)
+        for attempt in range(max(self.retries, rate_limited) + 1):
             self._count(statistics, 'operation_attempts')
             try:
                 response = read_response()
@@ -184,7 +188,8 @@ class HttpClient:
                 retryable = exc.code in self.config.retry_statuses
                 retry_after = self._retry_after(exc)
                 wait_exceeds_budget = retry_after is not None and retry_after > self.config.maximum_retry_delay
-                if not retryable or attempt == self.retries or wait_exceeds_budget:
+                allowed = rate_limited if exc.code == HTTPStatus.TOO_MANY_REQUESTS else self.retries
+                if not retryable or attempt >= allowed or wait_exceeds_budget:
                     endpoint_host = urlsplit(exc.filename or request.full_url).hostname or request.host
                     message = f'HTTP {exc.code} from {endpoint_host}'
                     # Do not retry sooner than the server permits; let callers defer this source.
@@ -193,12 +198,12 @@ class HttpClient:
                     ) from exc
                 delay = self._retry_delay(exc, attempt)
                 logger.info(
-                    'HTTP %s from %s; retry %d/%d in %.1fs', exc.code, request.host, attempt + 1, self.retries, delay
+                    'HTTP %s from %s; retry %d/%d in %.1fs', exc.code, request.host, attempt + 1, allowed, delay
                 )
                 time.sleep(delay)
             except (OSError, HTTPException) as exc:
                 self._count(statistics, 'network_errors')
-                if attempt == self.retries:
+                if attempt >= self.retries:
                     kind = 'network_error'
                     if isinstance(exc, TimeoutError) or 'timed out' in str(exc).lower():
                         kind = 'timeout'
