@@ -4,10 +4,12 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import copy_context
 from dataclasses import dataclass
+from functools import partial
 from itertools import combinations
 from typing import Any
 
-from .config import DEFAULT_MATCHING
+from .concurrency import attempt, in_order
+from .config import DEFAULT_ANCHORS, DEFAULT_MATCHING
 from .identity import IdentityLink, compare_identity, names_may_match
 from .identity_adjudication import accepted
 from .identity_anchors import SUPPLIED_ORCID_REASON, IdentityAnchors
@@ -55,8 +57,11 @@ class ProfessorResolver:
         adjudicator=None,
         ranking=None,
         disambiguator=None,
+        lookup_workers=DEFAULT_ANCHORS.lookup_workers,
     ):
         self.config = config
+        # Anchored profiles the name search missed, looked up at once.
+        self.lookup_workers = lookup_workers
         self.providers = list(providers)
         # Orders candidates and decides contests; see identity_ranking.IdentityRanking.
         self.ranking = ranking or IdentityRanking(config)
@@ -158,17 +163,25 @@ class ProfessorResolver:
     def _anchored_records(self, anchors, records, errors):
         """Fetch anchored profiles that the name search did not return."""
         present = {(record.source, record.author_id) for record in records}
-        added = []
+        wanted = []
         for provider in self.providers:
             lookup = getattr(provider, 'lookup', None)
             for author_id in sorted(anchors.author_ids.get(provider.name, ())):
-                if lookup is None or (provider.name, author_id) in present:
-                    continue
-                try:
-                    added.append(lookup(author_id))
-                except Exception as exc:
-                    log_isolated_failure(logger, 'Anchor lookup %s:%s failed: %s', provider.name, author_id, exc)
-                    errors.setdefault(provider.name, str(exc))
+                if lookup is not None and (provider.name, author_id) not in present:
+                    wanted.append((provider, author_id, lookup))
+        # Looked up side by side, then taken in order, so the records and the first error per source are as before.
+        outcomes = in_order(
+            [partial(attempt, partial(lookup, author_id), (Exception,)) for _, author_id, lookup in wanted],
+            self.lookup_workers,
+            'anchored-profiles',
+        )
+        added = []
+        for (provider, author_id, _), outcome in zip(wanted, outcomes, strict=True):
+            if outcome.error is None:
+                added.append(outcome.unwrap())
+            else:
+                log_isolated_failure(logger, 'Anchor lookup %s:%s failed: %s', provider.name, author_id, outcome.error)
+                errors.setdefault(provider.name, str(outcome.error))
         return added
 
     @staticmethod
