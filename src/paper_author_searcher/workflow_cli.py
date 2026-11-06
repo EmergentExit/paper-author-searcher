@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .composition import RunOptions, ServiceContainer
-from .config import AMBIGUITY_POLICIES, AmbiguityPolicy
+from .config import AMBIGUITY_POLICIES, METERED_COST_CAP_USD, AmbiguityPolicy
 from .logging_config import add_logging_arguments, configure_from_arguments
 from .models import ProfessorQuery
 from .settings import Settings, add_settings_argument, load_settings, validate_contact_email
@@ -101,7 +101,7 @@ def add_workflow_arguments(parser):
     parser.add_argument(
         '--max-cost-usd',
         type=float,
-        default=0.5,
+        default=METERED_COST_CAP_USD,
         help='Hard cap on estimated metered API spend (OpenAlex) for this run; 0 = only free requests',
     )
     parser.add_argument(

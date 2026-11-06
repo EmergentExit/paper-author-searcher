@@ -216,9 +216,10 @@ class OrcidRegistrySearch:
 class PageRanker:
     """Scores a candidate page as the person's own: each feature is 0..1 and the score is their weighted sum.
 
-    Features: the person's name in the page title (all tokens 1, family name 0.5) and in the URL, the requested
-    institution in the title or snippet (token containment, or the host is the institution's email domain), a
-    publication-list or CV marker, and an academic host. Excluded hosts (aggregators, social networks) score 0.
+    Features: the person's name in the page title (all tokens 1, the family name alone ``family_name_title_credit``)
+    and in the URL, the requested institution in the title or snippet (token containment, or the host is the
+    institution's email domain), a publication-list or CV marker, and an academic host. Excluded hosts (aggregators,
+    social networks) score 0.
     """
 
     def __init__(
@@ -239,7 +240,11 @@ class PageRanker:
         tokens = normalize(query.name).split()
         family = tokens[-1] if tokens else ''
         return {
-            'name_in_title': 1.0 if tokens and set(tokens) <= title else 0.5 if family in title else 0.0,
+            'name_in_title': 1.0
+            if tokens and set(tokens) <= title
+            else self.config.family_name_title_credit
+            if family in title
+            else 0.0,
             'name_in_url': sum(token in url_text for token in tokens) / len(tokens) if tokens else 0.0,
             'institution': self._institution(query, host, f'{hit.title} {hit.snippet}'),
             'publication_page': float(

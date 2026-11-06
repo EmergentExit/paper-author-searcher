@@ -312,6 +312,8 @@ class DiscoveryConfig:
     minimum_page_score: float = 0.5
     # Page ranking weights (PageRanker): each feature is 0..1 and the score is their weighted sum.
     weight_name_in_title: float = 0.35
+    # A title naming only the family name earns this share of the name-in-title feature (the full name earns 1).
+    family_name_title_credit: float = 0.5
     weight_name_in_url: float = 0.15
     weight_institution: float = 0.30
     weight_publication_page: float = 0.15

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
+from .config import METERED_COST_CAP_USD
 from .http import SourceError
 from .http_decorators import HttpClientDecorator
 
@@ -27,7 +28,7 @@ class MeteredHost:
 
 @dataclass(frozen=True)
 class BudgetConfig:
-    maximum_cost_usd: float = 0.5
+    maximum_cost_usd: float = METERED_COST_CAP_USD
     hosts: tuple = (MeteredHost(),)
 
     def __post_init__(self) -> None:

@@ -6,6 +6,8 @@ Every field can be set as ``PAPER_SEARCH__SERVICE__<FIELD>``; object-store crede
 
 from dataclasses import dataclass
 
+from .sources import METERED_COST_CAP_USD
+
 MAXIMUM_TCP_PORT = 65535
 API_KEY_ENTRY_SEPARATORS = 2
 FILE_STORES = ('local', 's3')
@@ -24,7 +26,7 @@ class ServiceConfig:
     api_key_hashes: tuple[str, ...] = ()
     # Worker threads inside `serve`; 0 leaves every search to separate `paper-search-api worker` processes.
     workers: int = 1
-    maximum_cost_usd: float = 0.5
+    maximum_cost_usd: float = METERED_COST_CAP_USD
     # A search past this stops asking sources and returns what it has found, with a notice (0: no limit). One
     # prolific author would otherwise hold a worker for hours while other searches wait.
     maximum_search_seconds: float = 3600.0

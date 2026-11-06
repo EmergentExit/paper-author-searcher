@@ -7,7 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from paper_author_searcher.config import AmbiguityPolicy
+from paper_author_searcher.config import METERED_COST_CAP_USD, AmbiguityPolicy
 
 
 class Aggregation(str, Enum):
@@ -83,7 +83,7 @@ class RunSettings:
     # "minimal": name, university, department only. "with_hints": also the roster's ORCID/homepage/known papers.
     input_profile: str = 'minimal'
     # One shared cap for the whole benchmark run (all people), in estimated USD of metered API requests.
-    max_cost_usd: float | None = 0.5
+    max_cost_usd: float | None = METERED_COST_CAP_USD
     cost_ledger: str = 'benchmark'
     # Which collected papers the full-text pass processes. "window": every paper in the person's truth window,
     # chosen without looking at truth (the default). "truth": only papers that match a truth entry, the only ones

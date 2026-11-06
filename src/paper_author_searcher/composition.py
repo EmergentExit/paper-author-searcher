@@ -381,7 +381,12 @@ class ServiceContainer:
     @cached_property
     def authorship_places(self) -> AuthorshipPlaces:
         settings = self.settings
-        return AuthorshipPlaces(self.http_client, settings.sources.openalex_url, settings.credentials.openalex_api_key)
+        return AuthorshipPlaces(
+            self.http_client,
+            settings.sources.openalex_url,
+            settings.credentials.openalex_api_key,
+            settings.ownership.byline_lookup_batch_size,
+        )
 
     @cached_property
     def institution_names(self) -> InstitutionNames:
@@ -400,6 +405,7 @@ class ServiceContainer:
             settings.credentials.openalex_api_key,
             lambda name: names.collides_easily(name, settings.precision.collision_given_name_letters),
             settings.ownership.rare_name_minimum_share,
+            settings.ownership.rare_name_search_results,
         )
 
     @cached_property
