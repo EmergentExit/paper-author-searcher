@@ -9,6 +9,9 @@ Precedence, lowest to highest:
 Values are coerced to each field's declared type and every section re-runs its own validation. Credentials come
 only from their conventional environment variables or a secrets directory, never from a settings file, and are never
 rendered.
+
+This module is the only reader of the environment, except ``logging_config``: the log level and format
+(``PAPER_SEARCH_LOG_LEVEL``, ``PAPER_SEARCH_LOG_FORMAT``) must be set before settings load, so loading can log.
 """
 
 import argparse
