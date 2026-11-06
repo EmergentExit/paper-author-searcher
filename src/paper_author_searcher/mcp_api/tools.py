@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from paper_author_searcher.api.schema import validator
+from paper_author_searcher.config import DEFAULT_SERVICE
 from paper_author_searcher.service.facade import SearchService
 from paper_author_searcher.service.model import ErrorKind, Job, JobStatus, ServiceError
 from paper_author_searcher.service.views import search_view
@@ -36,8 +37,8 @@ WAITING = (JobStatus.QUEUED, JobStatus.RUNNING)
 class WaitPolicy:
     """How long a status call may wait for a change, and how often it looks."""
 
-    maximum_seconds: float = 50.0
-    poll_seconds: float = 2.0
+    maximum_seconds: float = DEFAULT_SERVICE.mcp_maximum_wait_seconds
+    poll_seconds: float = DEFAULT_SERVICE.mcp_poll_seconds
 
 
 class SearchTools:
