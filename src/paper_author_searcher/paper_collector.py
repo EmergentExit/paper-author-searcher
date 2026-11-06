@@ -4,6 +4,7 @@ import logging
 import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextvars import copy_context
 from dataclasses import replace
 from typing import Any, Protocol
 
@@ -131,6 +132,21 @@ class PaperCollector:
         ]
         return narrowed, selected, kept
 
+    def _search_names(
+        self, profile: ProfessorProfile, selected: dict[str, list[str]]
+    ) -> tuple[list[PaperSourceResult], ProfessorProfile, dict[str, list[str]]]:
+        """Each name search in order; each sees the name keys of the ones before it, as an alias of the profile."""
+        selected = dict(selected)
+        found_by_name = []
+        for search in self.name_searches:
+            with phase('collection: name search ' + search.name):
+                found_by_name.append(search.collect(profile))
+            key = search.author_key(profile)
+            selected[search.name] = sorted({*selected.get(search.name, []), key})
+            aliases = {**profile.author_id_aliases, search.name: selected[search.name]}
+            profile = replace(profile, author_id_aliases=aliases)
+        return found_by_name, profile, selected
+
     def collect(
         self,
         profile: ProfessorProfile,
@@ -168,10 +184,16 @@ class PaperCollector:
         limits = {name: self.concurrency.get(name, 1) for name in available}
         gates = {name: threading.BoundedSemaphore(limit) for name, limit in limits.items()}
         workers = max(1, min(len(tasks), sum(limits.values())))
+        # Name searches read the profile, not the author-ID records, so for a settled identity they run alongside
+        # the author-ID sources. A contest may still be settled by department below, so it searches names after.
+        early = confirmation != ResolutionStatus.AMBIGUOUS_CONTENDERS and bool(self.name_searches)
         with (
+            ThreadPoolExecutor(max_workers=1, thread_name_prefix='name-searches') as names_pool,
             phase('collection: author ID sources'),
             ThreadPoolExecutor(max_workers=workers, thread_name_prefix='paper-collection') as pool,
         ):
+            # The worker runs in a copy of this context, so its phases are timed in this run.
+            by_name = names_pool.submit(copy_context().run, self._search_names, profile, selected) if early else None
             futures = {}
             for provider, author_id in tasks:
                 future = pool.submit(self._collect_one, provider, author_id, gates[provider.name])
@@ -194,15 +216,11 @@ class PaperCollector:
                 profile, selected, records = self._settle(profile, winner, records)
                 confirmation = IdentityConfirmation.DEPARTMENT
         if confirmation != ResolutionStatus.AMBIGUOUS_CONTENDERS:
-            for search in self.name_searches:
-                with phase('collection: name search ' + search.name):
-                    found = search.collect(profile)
+            # Joined in the configured order after the author-ID records, exactly as a one-by-one run adds them.
+            found_by_name, profile, selected = by_name.result() if by_name else self._search_names(profile, selected)
+            for found in found_by_name:
                 sources.append(found)
                 records.extend(found.papers)
-                key = search.author_key(profile)
-                selected[search.name] = sorted({*selected.get(search.name, []), key})
-                aliases = {**profile.author_id_aliases, search.name: selected[search.name]}
-                profile = replace(profile, author_id_aliases=aliases)
         if self.listed_works is not None and confirmation != ResolutionStatus.AMBIGUOUS_CONTENDERS:
             with phase('collection: listed works'):
                 listed = self.listed_works.retrieve(profile, records)

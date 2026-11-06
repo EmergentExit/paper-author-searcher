@@ -11,8 +11,11 @@ from .config import DEFAULT_MATCHING, TITLE_SPELLINGS, MatchingConfig
 
 # A name of this many words or more has a given and a family name.
 FULL_NAME_WORDS = 2
+# Entries kept per cached helper below; the same names, titles and DOIs recur across sources and comparisons.
+CACHE_SIZE = 200_000
 
 
+@lru_cache(maxsize=CACHE_SIZE)
 def normalize(value: str) -> str:
     decomposed = unicodedata.normalize('NFKD', value).casefold()
     characters = []
@@ -26,6 +29,7 @@ _TITLE_SPELLING = re.compile(r'\b(?:' + '|'.join(british for british, _ in TITLE
 _TITLE_SPELLING_FORMS = dict(TITLE_SPELLINGS)
 
 
+@lru_cache(maxsize=CACHE_SIZE)
 def normalize_title(value: str) -> str:
     """``normalize`` for comparing titles: British and American spellings of a word compare equal."""
     return _TITLE_SPELLING.sub(lambda match: _TITLE_SPELLING_FORMS[match.group()], normalize(value))
@@ -55,7 +59,7 @@ def _compatible_middle_names(left: Sequence[str], right: Sequence[str]) -> bool:
     return True
 
 
-@lru_cache(maxsize=200_000)
+@lru_cache(maxsize=CACHE_SIZE)
 def name_similarity(left: str, right: str, config: MatchingConfig = DEFAULT_MATCHING) -> float:
     left_words = normalize(left).split()
     right_words = normalize(re.sub(r'\s+\d{4}$', '', right)).split()
@@ -81,7 +85,7 @@ def name_similarity(left: str, right: str, config: MatchingConfig = DEFAULT_MATC
     return SequenceMatcher(None, ' '.join(left_words), ' '.join(right_words)).ratio()
 
 
-@lru_cache(maxsize=200_000)
+@lru_cache(maxsize=CACHE_SIZE)
 def name_similarity_upper_bound(left: str, right: str, config: MatchingConfig = DEFAULT_MATCHING) -> float:
     """Never below ``name_similarity(left, right)``, at linear cost.
 
@@ -110,7 +114,7 @@ def name_similarity_upper_bound(left: str, right: str, config: MatchingConfig = 
     return SequenceMatcher(None, ' '.join(left_words), ' '.join(right_words)).quick_ratio()
 
 
-@lru_cache(maxsize=200_000)
+@lru_cache(maxsize=CACHE_SIZE)
 def institution_similarity(left: str, right: str, config: MatchingConfig = DEFAULT_MATCHING) -> float:
     left_name = normalize(left)
     right_name = normalize(right)
@@ -168,6 +172,7 @@ DOI_URL = 'https://doi.org/'
 ARXIV_ABSTRACT_URL = 'https://arxiv.org/abs/'
 
 
+@lru_cache(maxsize=CACHE_SIZE)
 def canonical_doi(value: str) -> str:
     value = value.strip().lower()
     prefixes = (
@@ -227,7 +232,11 @@ def identity_work(
 
 # Process-wide memo caches of the pure similarity functions (bounded LRU). A long-running service reports them
 # as metrics and may clear them, e.g. after changing matching configuration.
-SIMILARITY_CACHES = {
+# The comparison helpers and the text normalizers they rely on; all are pure, so caching never changes an answer.
+SIMILARITY_CACHES: dict[str, Any] = {
+    'normalize': normalize,
+    'normalize_title': normalize_title,
+    'canonical_doi': canonical_doi,
     'name_similarity': name_similarity,
     'name_similarity_upper_bound': name_similarity_upper_bound,
     'institution_similarity': institution_similarity,

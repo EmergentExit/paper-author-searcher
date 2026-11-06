@@ -252,3 +252,23 @@ class SimilarityCacheTests(unittest.TestCase):
         self.assertEqual(statistics['hit_rate'], 0.5)
         clear_similarity_caches()
         self.assertEqual(similarity_cache_statistics()['name_similarity']['entries'], 0)
+
+    def test_cached_normalizers_answer_as_before_and_report_their_hits(self):
+        from paper_author_searcher.matching import (
+            canonical_doi,
+            clear_similarity_caches,
+            normalize,
+            normalize_title,
+            similarity_cache_statistics,
+        )
+
+        clear_similarity_caches()
+        for _ in range(2):
+            self.assertEqual(normalize('José  Müller-Smith'), 'jose muller smith')
+            self.assertEqual(normalize_title('Colour Modelling'), normalize_title('Color Modeling'))
+            self.assertEqual(canonical_doi(' https://doi.org/10.1/ABC '), 'doi:10.1/abc')
+        statistics = similarity_cache_statistics()
+        self.assertGreaterEqual(statistics['normalize']['hits'], 1)
+        self.assertEqual(statistics['canonical_doi']['hits'], 1)
+        clear_similarity_caches()
+        self.assertEqual(similarity_cache_statistics()['normalize']['entries'], 0)
