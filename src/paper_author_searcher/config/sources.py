@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 
 MAXIMUM_ZLIB_LEVEL = 9
+# Default cap on one run's estimated spend on metered APIs (OpenAlex), in USD; 0 allows only free requests.
+METERED_COST_CAP_USD = 0.5
 
 
 @dataclass(frozen=True)
