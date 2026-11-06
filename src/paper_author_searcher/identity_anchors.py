@@ -5,12 +5,14 @@ An anchor is independent of the name search, so it separates namesakes and ties 
 
 import logging
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from functools import partial
 from html import unescape
 from typing import Any, Protocol
 from urllib.parse import quote, urljoin, urlsplit
 
+from .concurrency import Outcome, attempt, in_order
 from .config import DEFAULT_ANCHORS, DEFAULT_DISCOVERY, DEFAULT_MATCHING, DEFAULT_SOURCES
 from .evaluation_matching import bibliographic_name_agrees
 from .homepage_citations import (
@@ -50,6 +52,11 @@ logger = logging.getLogger(__name__)
 
 # Added by the resolver itself when a candidate record carries the supplied ORCID; not an anchor-finder result.
 SUPPLIED_ORCID_REASON = 'ORCID matches the supplied ORCID'
+# Errors a page read or listed source may raise that leave the rest of the search usable.
+PAGE_ERRORS = (SourceError, ValueError)
+# Errors a paper lookup may raise that the anchors record and pass over, as one failed lookup does.
+LOOKUP_ERRORS = (SourceError,)
+SEMANTIC_SCHOLAR_FIELDS = 'title,authors'
 ARXIV_HINT = re.compile(r'^(?:arxiv:)?(\d{4}\.\d{4,5})(?:v\d+)?$', re.IGNORECASE)
 
 
@@ -258,17 +265,23 @@ class ScholarlyAnchorFinder:
             for page in discovery.best_pages(self.discovery_config.maximum_pages_read)
             if page.url not in supplied
         ]
+        # Pages and listed sources are fetched side by side, then used in order exactly as if read one by one; a
+        # page past the room left is fetched but not used.
+        fetches: list[Callable[[], Outcome[Any]]] = [
+            partial(attempt, partial(self._read_page, page.url), PAGE_ERRORS) for page in pages
+        ]
+        fetches += [partial(attempt, partial(source.works, query), PAGE_ERRORS) for source in self.listed_sources]
+        with phase('anchors: page reads and listed sources'):
+            fetched = in_order(fetches, self.config.lookup_workers, 'anchor-pages')
         room = self.discovery_config.maximum_pages
-        for page in pages:
+        for page, outcome in zip(pages, fetched, strict=False):
             if page.strict and room < 1:
                 break
-            try:
-                with phase('anchors: page reads'):
-                    read = self._read_page(page.url)
-            except (SourceError, ValueError) as exc:
-                anchors.errors.append(f'page {page.url}: {exc}')
+            if outcome.error is not None:
+                anchors.errors.append(f'page {page.url}: {outcome.error}')
                 room -= page.strict
                 continue
+            read = outcome.unwrap()
             if page.must_name_school and not self._names_school(query, page.url, read.text):
                 anchors.discovered['evidence'].append(f'Page {page.url} not used: it does not name the school')
                 continue
@@ -287,25 +300,18 @@ class ScholarlyAnchorFinder:
             known = {item['url'] for item in anchors.listed_pdfs}
             new = [item for item in listed_pdfs(pdf_citations, page.url, self.config) if item['url'] not in known]
             anchors.listed_pdfs += new[: max(0, self.config.maximum_listed_pdfs - len(anchors.listed_pdfs))]
-        for source in self.listed_sources:
-            try:
-                with phase('anchors: listed sources'):
-                    works = source.works(query)
-                anchors.listed_works = sorted(set(anchors.listed_works) | works)
-            except (SourceError, ValueError) as exc:
-                anchors.errors.append(f'{source.name}: {exc}')
+        for source, outcome in zip(self.listed_sources, fetched[len(pages) :], strict=True):
+            if outcome.error is not None:
+                anchors.errors.append(f'{source.name}: {outcome.error}')
+            else:
+                anchors.listed_works = sorted(set(anchors.listed_works) | outcome.unwrap())
         budget = self.config.maximum_anchor_papers
         dois, arxiv_ids = hints['doi'][:budget], hints['arxiv'][:budget]
         # A page that links no identifiers (titles only) is still usable: exact-title lookups fill the budget left.
         title_budget = min(self.config.maximum_title_anchors, max(0, budget - len(dois) - len(arxiv_ids)))
         titles = hints['title'][:budget] + page_titles[:title_budget]
         with phase('anchors: paper lookups'):
-            for doi in dois:
-                self._guard(anchors, self._by_doi, query, doi)
-            for arxiv in arxiv_ids:
-                self._guard(anchors, self._by_arxiv, query, arxiv)
-            for title in titles:
-                self._guard(anchors, self._by_title, query, title)
+            self._paper_anchors(anchors, query, dois, arxiv_ids, titles)
         anchors.settle_contested(self.config.minimum_contested_works)
         return anchors
 
@@ -413,38 +419,62 @@ class ScholarlyAnchorFinder:
         for author_id in conflicting if not agreeing else []:
             anchors.contest('openalex', author_id, reason, work_key)
 
-    def _by_doi(self, anchors, query, doi) -> None:
-        work = self.client.get(
-            self.openalex_url + '/works/doi:' + quote(doi, safe='/'),
-            {'select': 'id,doi,authorships', 'api_key': self.openalex_key},
+    def _paper_anchors(self, anchors, query, dois, arxiv_ids, titles) -> None:
+        """Anchor the authors of the hinted papers. Every OpenAlex lookup runs side by side and Semantic Scholar
+        answers all papers in one batch; the answers are then used in the hints' order, so the anchors, their order
+        and the errors are those of one lookup after another."""
+        lookups: list[Callable[[], Any]] = [partial(self._openalex_work, doi) for doi in dois]
+        lookups += [partial(self._openalex_work, ARXIV_DOI_PREFIX + arxiv.lower()) for arxiv in arxiv_ids]
+        lookups += [partial(self._openalex_titles, title) for title in titles]
+        found: list[Outcome[Any]] = in_order(
+            [partial(attempt, lookup, LOOKUP_ERRORS) for lookup in lookups], self.config.lookup_workers, 'anchor-works'
         )
-        self._openalex_authorships(anchors, query, work, 'author of DOI ' + doi, _key(dois=[doi]))
-        self._guard(anchors, self._by_semantic_scholar_paper, query, 'DOI:' + doi)
+        by_doi, by_arxiv, by_title = (
+            found[: len(dois)],
+            found[len(dois) : len(dois) + len(arxiv_ids)],
+            found[len(dois) + len(arxiv_ids) :],
+        )
+        wanted = [f'DOI:{doi}' for doi, work in zip(dois, by_doi, strict=True) if work.error is None]
+        wanted += [f'ARXIV:{arxiv}' for arxiv, work in zip(arxiv_ids, by_arxiv, strict=True) if work.error is None]
+        for title, works in zip(titles, by_title, strict=True):
+            if works.error is None:
+                wanted += [f'DOI:{doi}' for _, doi in self._title_matches(title, works.unwrap()) if doi]
+        papers = self._semantic_scholar_papers(wanted)
+        for doi, work in zip(dois, by_doi, strict=True):
+            if work.error is not None:
+                anchors.errors.append(f'{doi}: {work.error}')
+                continue
+            self._openalex_authorships(anchors, query, work.unwrap(), 'author of DOI ' + doi, _key(dois=[doi]))
+            self._semantic_scholar_anchors(anchors, query, 'DOI:' + doi, papers)
+        for arxiv, work in zip(arxiv_ids, by_arxiv, strict=True):
+            if work.error is not None:
+                anchors.errors.append(f'{arxiv}: {work.error}')
+                continue
+            self._openalex_authorships(
+                anchors, query, work.unwrap(), 'author of arXiv ' + arxiv, _key(arxiv_ids=[arxiv])
+            )
+            self._semantic_scholar_anchors(anchors, query, 'ARXIV:' + arxiv, papers)
+        for title, works in zip(titles, by_title, strict=True):
+            if works.error is not None:
+                anchors.errors.append(f'{title}: {works.error}')
+                continue
+            for match, doi in self._title_matches(title, works.unwrap()):
+                self._openalex_authorships(
+                    anchors, query, match, f'author of title "{title[:80]}"', _key(titles=[title])
+                )
+                # Anchor Semantic Scholar as well, as a DOI hint does: once anchors exist, an unanchored ID cannot
+                # corroborate the other database, so a one-sided anchor would cost the cross-source evidence.
+                if doi:
+                    self._semantic_scholar_anchors(anchors, query, 'DOI:' + doi, papers)
 
-    def _by_arxiv(self, anchors, query, arxiv) -> None:
+    def _openalex_work(self, doi: str) -> dict:
         # OpenAlex indexes arXiv preprints under their DataCite DOI; Semantic Scholar takes the arXiv ID.
-        doi = ARXIV_DOI_PREFIX + arxiv.lower()
-        work = self.client.get(
+        return self.client.get(
             self.openalex_url + '/works/doi:' + quote(doi, safe='/'),
             {'select': 'id,doi,authorships', 'api_key': self.openalex_key},
         )
-        self._openalex_authorships(anchors, query, work, 'author of arXiv ' + arxiv, _key(arxiv_ids=[arxiv]))
-        self._guard(anchors, self._by_semantic_scholar_paper, query, 'ARXIV:' + arxiv)
 
-    def _by_semantic_scholar_paper(self, anchors, query, paper_id) -> None:
-        headers = {'x-api-key': self.semantic_scholar_key} if self.semantic_scholar_key else None
-        data = self.client.get(
-            '{}/paper/{}'.format(self.semantic_scholar_url, quote(paper_id, safe=':/')),
-            {'fields': 'title,authors'},
-            headers,
-        )
-        namespace, _, value = paper_id.partition(':')
-        work_key = _key(dois=[value]) if namespace == 'DOI' else _key(arxiv_ids=[value])
-        for author in data.get('authors') or []:
-            if author.get('authorId') and self._compatible(query, author.get('name')):
-                anchors.add('semantic_scholar', author['authorId'], 'author of ' + paper_id, AnchorKind.PAPER, work_key)
-
-    def _by_title(self, anchors, query, title) -> None:
+    def _openalex_titles(self, title: str) -> list[dict]:
         data = self.client.get(
             self.openalex_url + '/works',
             {
@@ -454,16 +484,65 @@ class ScholarlyAnchorFinder:
                 'api_key': self.openalex_key,
             },
         )
-        for work in data.get('results') or []:
-            if normalize_title(work.get('title') or '') == normalize_title(title):
-                self._openalex_authorships(
-                    anchors, query, work, f'author of title "{title[:80]}"', _key(titles=[title])
+        return data.get('results') or []
+
+    @staticmethod
+    def _title_matches(title: str, works: list[dict]) -> list[tuple[dict, str | None]]:
+        """The search results bearing exactly this title, each with its bare DOI (None without one)."""
+        return [
+            (work, canonical_doi(work['doi']).removeprefix('doi:') if work.get('doi') else None)
+            for work in works
+            if normalize_title(work.get('title') or '') == normalize_title(title)
+        ]
+
+    def _semantic_scholar_papers(self, paper_ids: list[str]) -> dict[str, Outcome[dict]]:
+        """Each paper's Semantic Scholar record, by ID, in batches. A paper the batch does not return, or a batch
+        that fails, is asked for on its own, so the answer and any error are those of a single lookup."""
+        unique = list(dict.fromkeys(paper_ids))
+        size = self.config.semantic_scholar_batch_size
+        papers: dict[str, Outcome[dict]] = {}
+        for start in range(0, len(unique), size):
+            batch = unique[start : start + size]
+            try:
+                answers = self.client.post_json(
+                    self.semantic_scholar_url + '/paper/batch',
+                    {'ids': batch},
+                    params={'fields': SEMANTIC_SCHOLAR_FIELDS},
+                    headers=self._semantic_scholar_headers(),
+                    expected_type=list,
                 )
-                # Anchor Semantic Scholar as well, as a DOI hint does: once anchors exist, an unanchored ID cannot
-                # corroborate the other database, so a one-sided anchor would cost the cross-source evidence.
-                doi = canonical_doi(work['doi']).removeprefix('doi:') if work.get('doi') else None
-                if doi:
-                    self._guard(anchors, self._by_semantic_scholar_paper, query, 'DOI:' + doi)
+            except SourceError as exc:
+                logger.info('Semantic Scholar anchor batch failed, asking one paper at a time: %s', exc)
+                answers = []
+            if len(answers) != len(batch):
+                answers = [None] * len(batch)
+            for paper_id, answer in zip(batch, answers, strict=True):
+                if isinstance(answer, dict) and not answer.get('error'):
+                    papers[paper_id] = Outcome(value=answer)
+                else:
+                    papers[paper_id] = attempt(partial(self._semantic_scholar_paper, paper_id), LOOKUP_ERRORS)
+        return papers
+
+    def _semantic_scholar_headers(self) -> dict[str, str] | None:
+        return {'x-api-key': self.semantic_scholar_key} if self.semantic_scholar_key else None
+
+    def _semantic_scholar_paper(self, paper_id: str) -> dict:
+        return self.client.get(
+            '{}/paper/{}'.format(self.semantic_scholar_url, quote(paper_id, safe=':/')),
+            {'fields': SEMANTIC_SCHOLAR_FIELDS},
+            self._semantic_scholar_headers(),
+        )
+
+    def _semantic_scholar_anchors(self, anchors, query, paper_id: str, papers: Mapping[str, Outcome[dict]]) -> None:
+        paper = papers[paper_id]
+        if paper.error is not None:
+            anchors.errors.append(f'{paper_id}: {paper.error}')
+            return
+        namespace, _, value = paper_id.partition(':')
+        work_key = _key(dois=[value]) if namespace == 'DOI' else _key(arxiv_ids=[value])
+        for author in paper.unwrap().get('authors') or []:
+            if author.get('authorId') and self._compatible(query, author.get('name')):
+                anchors.add('semantic_scholar', author['authorId'], 'author of ' + paper_id, AnchorKind.PAPER, work_key)
 
 
 class RecordedAnchorFinder:
