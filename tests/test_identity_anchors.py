@@ -3,12 +3,14 @@
 import dataclasses
 import json
 import threading
+import time
 import unittest
 
 from paper_author_searcher import AuthorCandidate as C
 from paper_author_searcher import ProfessorQuery as Q
 from paper_author_searcher import ProfessorResolver
 from paper_author_searcher.config import DEFAULT_ANCHORS, DEFAULT_MATCHING
+from paper_author_searcher.http import SourceError
 from paper_author_searcher.identity_anchors import (
     IdentityAnchors,
     RecordedAnchorFinder,
@@ -18,6 +20,7 @@ from paper_author_searcher.identity_anchors import (
 )
 from paper_author_searcher.identity_ranking import IdentityRanking
 from paper_author_searcher.models import AnchorEvidence, ProfessorProfile
+from semantic_scholar_batch import BatchFromSingleLookups
 
 
 class Provider:
@@ -92,7 +95,7 @@ class HintParsingTests(unittest.TestCase):
 
 class FinderTests(unittest.TestCase):
     def test_doi_and_orcid_lookups_find_name_compatible_authors(self):
-        class Client:
+        class Client(BatchFromSingleLookups):
             def get(self, url, params=None, headers=None, xml=False):
                 if url.endswith('/authors'):
                     return {'results': [{'id': 'https://openalex.org/A9', 'display_name': 'Mei Lin'}]}
@@ -125,13 +128,81 @@ class FinderTests(unittest.TestCase):
         self.assertEqual(found.listed_works, ['doi:10.1000/listed', 'title:an untitled identifier free work'])
 
 
+class PaperLookupTests(unittest.TestCase):
+    """Anchor papers: OpenAlex one by one (side by side), Semantic Scholar in one batch, used in the hints' order."""
+
+    class Client(BatchFromSingleLookups):
+        def __init__(self, missing=(), batch=None):
+            self.missing, self.batch, self.gets = set(missing), batch, []
+
+        def get(self, url, params=None, headers=None, xml=False):
+            self.gets.append(url)
+            paper = url.split('/paper/', 1)[-1] if '/paper/' in url else url.split('/works/', 1)[-1]
+            if paper in self.missing:
+                raise SourceError(f'HTTP 404 from {url}', status_code=404)
+            if '/paper/' in url:
+                return {'authors': [{'authorId': 'S-' + paper, 'name': 'Mei Lin'}]}
+            author = 'https://openalex.org/A' + paper.rsplit('/', 1)[-1]
+            return {'authorships': [{'author': {'id': author, 'display_name': 'Mei Lin'}}]}
+
+        def post_json(self, url, payload, params=None, headers=None, expected_type=dict):
+            if self.batch is not None:
+                self.batches = [*getattr(self, 'batches', []), list(payload['ids'])]
+                return self.batch(payload)
+            return super().post_json(url, payload, params, headers, expected_type)
+
+    def find(self, client, papers):
+        return ScholarlyAnchorFinder(client).find(Q('Mei Lin', 'Example University', known_papers=papers))
+
+    def test_semantic_scholar_answers_every_paper_in_one_batch_and_anchors_keep_the_hints_order(self):
+        client = self.Client()
+        found = self.find(client, ['10.1000/a', '10.1000/b', '2301.00001'])
+        self.assertEqual(client.batches, [['DOI:10.1000/a', 'DOI:10.1000/b', 'ARXIV:2301.00001']])
+        self.assertEqual(
+            [(item.source, item.author_id) for item in found.evidence],
+            [
+                ('openalex', 'Aa'),
+                ('semantic_scholar', 'S-DOI:10.1000/a'),
+                ('openalex', 'Ab'),
+                ('semantic_scholar', 'S-DOI:10.1000/b'),
+                ('openalex', 'Aarxiv.2301.00001'),
+                ('semantic_scholar', 'S-ARXIV:2301.00001'),
+            ],
+        )
+
+    def test_a_work_openalex_lacks_is_an_error_and_skips_semantic_scholar_as_before(self):
+        client = self.Client(missing={'doi:10.1000/a'})
+        found = self.find(client, ['10.1000/a', '10.1000/b'])
+        self.assertEqual(client.batches, [['DOI:10.1000/b']])
+        self.assertEqual(len(found.errors), 1)
+        self.assertTrue(found.errors[0].startswith('10.1000/a: HTTP 404'))
+
+    def test_a_paper_the_batch_lacks_or_a_failed_batch_is_asked_for_alone(self):
+        missing = self.Client(missing={'DOI:10.1000/a'}, batch=lambda payload: [None, {'authors': []}])
+        found = self.find(missing, ['10.1000/a', '10.1000/b'])
+        self.assertEqual([error.split(' from ')[0] for error in found.errors], ['DOI:10.1000/a: HTTP 404'])
+
+        def refuse(payload):
+            raise SourceError('HTTP 429 from api.semanticscholar.org', status_code=429)
+
+        failed = self.Client(batch=refuse)
+        found = self.find(failed, ['10.1000/a', '10.1000/b'])
+        self.assertEqual(found.author_ids['semantic_scholar'], {'S-DOI:10.1000/a', 'S-DOI:10.1000/b'})
+        self.assertEqual(found.errors, [])
+
+    def test_lookup_settings_must_be_positive(self):
+        for field in ('lookup_workers', 'semantic_scholar_batch_size'):
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                dataclasses.replace(DEFAULT_ANCHORS, **{field: 0})
+
+
 class ContestedAnchorTests(unittest.TestCase):
     """OpenAlex gives a merged author cluster one ORCID, which can be a namesake's."""
 
     ORCID = '0000-0000-0000-0001'
 
     def find(self, dois, minimum=3):
-        class Client:
+        class Client(BatchFromSingleLookups):
             def get(self, url, params=None, headers=None, xml=False):
                 if url.endswith(('/authors', '/works')) or '/paper/' in url:
                     return {'results': [], 'group': [], 'authors': []}
@@ -175,6 +246,46 @@ class ResolverAnchorTests(unittest.TestCase):
         provider = Provider(records, extra)
         resolver = ProfessorResolver([provider], anchor_finder=FixedAnchors(found))
         return resolver.resolve(query()), provider
+
+    def test_anchored_profiles_are_looked_up_one_at_a_time_per_source_but_sources_overlap(self):
+        semantic_scholar_started = threading.Event()
+        active, most, overlapped, lock = [0], [0], [], threading.Lock()
+
+        class Profiles:
+            def __init__(self, name):
+                self.name = name
+
+            def search(self, query):
+                return []
+
+            def lookup(self, author_id):
+                if self.name == 'semantic_scholar':
+                    semantic_scholar_started.set()
+                    with lock:
+                        active[0] += 1
+                        most[0] = max(most[0], active[0])
+                    time.sleep(0.02)  # long enough for a parallel lookup to show
+                    with lock:
+                        active[0] -= 1
+                else:
+                    overlapped.append(semantic_scholar_started.wait(timeout=5))
+                return C(self.name, author_id, 'Mei Lin', SCHOOL)
+
+        found = anchors('A1', 'A2')
+        for author_id in ('S1', 'S2', 'S3'):
+            found.add('semantic_scholar', author_id, 'author of DOI:10.1/x')
+        resolver = ProfessorResolver(
+            [Profiles('openalex'), Profiles('semantic_scholar')], anchor_finder=FixedAnchors(found)
+        )
+        errors = {}
+        records = resolver._anchored_records(found, [], errors)
+        self.assertEqual(
+            [(record.source, record.author_id) for record in records][:2], [('openalex', 'A1'), ('openalex', 'A2')]
+        )
+        self.assertEqual(len(records), 5)
+        self.assertEqual(most, [1])
+        self.assertIn(True, overlapped)
+        self.assertEqual(errors, {})
 
     def test_candidate_search_runs_while_anchors_are_found_and_the_result_is_unchanged(self):
         finding = threading.Event()

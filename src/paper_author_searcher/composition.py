@@ -339,6 +339,7 @@ class ServiceContainer:
                     self.http_client, self.settings.sources, self.settings.discovery.orcid_affiliation_sections
                 ).positions,
             ),
+            lookup_workers=self.settings.anchors.lookup_workers,
         )
 
     # Collection --------------------------------------------------------------------------------------------------

@@ -74,6 +74,44 @@ class HttpTests(unittest.TestCase):
             self.assertEqual(HttpClient().get('https://dblp.org/search/author/api'), {'result': {}})
             self.assertEqual(opener.call_args[0][0].get_header('Accept'), 'application/json')
 
+    def test_semantic_scholar_429s_wait_out_a_throttling_window_other_hosts_keep_the_default(self):
+        def limited(url):
+            return HTTPError(url, 429, 'limited', {}, None)
+
+        for url, retries, expected_attempts, longest in (
+            ('https://api.semanticscholar.org/graph/v1/paper/x', 2, 9, 10.0),
+            ('https://api.openalex.org/works/x', 2, 3, 2),
+            ('https://api.semanticscholar.org/graph/v1/paper/x', 0, 1, 0),
+        ):
+            with self.subTest(url=url, retries=retries):
+                client = HttpClient(retries=retries)
+                with (
+                    patch(
+                        'paper_author_searcher.http_transport.KeepAliveTransport.open',
+                        side_effect=limited(url),
+                    ),
+                    patch('paper_author_searcher.http.time.sleep') as sleep,
+                    self.assertRaisesRegex(SourceError, 'HTTP 429'),
+                ):
+                    client.get(url)
+                self.assertEqual(client.transport_statistics['metadata_get']['operation_attempts'], expected_attempts)
+                waits = [call.args[0] for call in sleep.call_args_list]
+                self.assertEqual(max(waits, default=0), longest)
+
+    def test_a_rate_limited_hosts_other_errors_keep_the_default_retries(self):
+        url = 'https://api.semanticscholar.org/graph/v1/paper/x'
+        client = HttpClient(retries=2)
+        with (
+            patch(
+                'paper_author_searcher.http_transport.KeepAliveTransport.open',
+                side_effect=HTTPError(url, 503, 'down', {}, None),
+            ),
+            patch('paper_author_searcher.http.time.sleep'),
+            self.assertRaisesRegex(SourceError, 'HTTP 503'),
+        ):
+            client.get(url)
+        self.assertEqual(client.transport_statistics['metadata_get']['operation_attempts'], 3)
+
     def test_http_forbidden(self):
         with patch(
             'paper_author_searcher.http_transport.KeepAliveTransport.open',
