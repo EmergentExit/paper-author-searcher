@@ -177,6 +177,15 @@ class AnchorConfig:
     minimum_contested_works: int = 3
     # Sources whose caller-supplied profile link (profile_links) anchors the linked author ID directly.
     profile_anchor_sources: tuple[str, ...] = ('openalex', 'semantic_scholar', 'dblp')
+    # Anchor requests in flight at once (pages, listed sources, OpenAlex paper lookups). The HTTP layer keeps every
+    # host's interval, so more workers overlap waits without sending any host more than it allows.
+    lookup_workers: int = 4
+    # Semantic Scholar answers up to this many anchor papers in one batch request (its limit is 500).
+    semantic_scholar_batch_size: int = 500
+
+    def __post_init__(self) -> None:
+        if self.lookup_workers < 1 or self.semantic_scholar_batch_size < 1:
+            raise ValueError('lookup_workers and semantic_scholar_batch_size must be positive')
 
 
 @dataclass(frozen=True)
