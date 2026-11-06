@@ -3,6 +3,7 @@
 import dataclasses
 import json
 import threading
+import time
 import unittest
 
 from paper_author_searcher import AuthorCandidate as C
@@ -245,6 +246,46 @@ class ResolverAnchorTests(unittest.TestCase):
         provider = Provider(records, extra)
         resolver = ProfessorResolver([provider], anchor_finder=FixedAnchors(found))
         return resolver.resolve(query()), provider
+
+    def test_anchored_profiles_are_looked_up_one_at_a_time_per_source_but_sources_overlap(self):
+        semantic_scholar_started = threading.Event()
+        active, most, overlapped, lock = [0], [0], [], threading.Lock()
+
+        class Profiles:
+            def __init__(self, name):
+                self.name = name
+
+            def search(self, query):
+                return []
+
+            def lookup(self, author_id):
+                if self.name == 'semantic_scholar':
+                    semantic_scholar_started.set()
+                    with lock:
+                        active[0] += 1
+                        most[0] = max(most[0], active[0])
+                    time.sleep(0.02)  # long enough for a parallel lookup to show
+                    with lock:
+                        active[0] -= 1
+                else:
+                    overlapped.append(semantic_scholar_started.wait(timeout=5))
+                return C(self.name, author_id, 'Mei Lin', SCHOOL)
+
+        found = anchors('A1', 'A2')
+        for author_id in ('S1', 'S2', 'S3'):
+            found.add('semantic_scholar', author_id, 'author of DOI:10.1/x')
+        resolver = ProfessorResolver(
+            [Profiles('openalex'), Profiles('semantic_scholar')], anchor_finder=FixedAnchors(found)
+        )
+        errors = {}
+        records = resolver._anchored_records(found, [], errors)
+        self.assertEqual(
+            [(record.source, record.author_id) for record in records][:2], [('openalex', 'A1'), ('openalex', 'A2')]
+        )
+        self.assertEqual(len(records), 5)
+        self.assertEqual(most, [1])
+        self.assertIn(True, overlapped)
+        self.assertEqual(errors, {})
 
     def test_candidate_search_runs_while_anchors_are_found_and_the_result_is_unchanged(self):
         finding = threading.Event()

@@ -60,7 +60,7 @@ class ProfessorResolver:
         lookup_workers=DEFAULT_ANCHORS.lookup_workers,
     ):
         self.config = config
-        # Anchored profiles the name search missed, looked up at once.
+        # Sources whose anchored profiles (the name search missed them) are looked up at once.
         self.lookup_workers = lookup_workers
         self.providers = list(providers)
         # Orders candidates and decides contests; see identity_ranking.IdentityRanking.
@@ -163,26 +163,38 @@ class ProfessorResolver:
     def _anchored_records(self, anchors, records, errors):
         """Fetch anchored profiles that the name search did not return."""
         present = {(record.source, record.author_id) for record in records}
-        wanted = []
+        batches = []
         for provider in self.providers:
             lookup = getattr(provider, 'lookup', None)
-            for author_id in sorted(anchors.author_ids.get(provider.name, ())):
-                if lookup is not None and (provider.name, author_id) not in present:
-                    wanted.append((provider, author_id, lookup))
-        # Looked up side by side, then taken in order, so the records and the first error per source are as before.
+            wanted = [
+                author_id
+                for author_id in sorted(anchors.author_ids.get(provider.name, ()))
+                if lookup is not None and (provider.name, author_id) not in present
+            ]
+            if wanted:
+                batches.append((provider, wanted, lookup))
+        # Sources are asked side by side, but each source's profiles one after another, as before: a rate-limited
+        # source (Semantic Scholar) answers parallel profile requests with 429s, and a lost profile loses its ID.
         outcomes = in_order(
-            [partial(attempt, partial(lookup, author_id), (Exception,)) for _, author_id, lookup in wanted],
+            [partial(self._look_up_each, lookup, wanted) for _, wanted, lookup in batches],
             self.lookup_workers,
             'anchored-profiles',
         )
         added = []
-        for (provider, author_id, _), outcome in zip(wanted, outcomes, strict=True):
-            if outcome.error is None:
-                added.append(outcome.unwrap())
-            else:
-                log_isolated_failure(logger, 'Anchor lookup %s:%s failed: %s', provider.name, author_id, outcome.error)
-                errors.setdefault(provider.name, str(outcome.error))
+        for (provider, wanted, _), results in zip(batches, outcomes, strict=True):
+            for author_id, outcome in zip(wanted, results, strict=True):
+                if outcome.error is None:
+                    added.append(outcome.unwrap())
+                else:
+                    log_isolated_failure(
+                        logger, 'Anchor lookup %s:%s failed: %s', provider.name, author_id, outcome.error
+                    )
+                    errors.setdefault(provider.name, str(outcome.error))
         return added
+
+    @staticmethod
+    def _look_up_each(lookup, author_ids):
+        return [attempt(partial(lookup, author_id), (Exception,)) for author_id in author_ids]
 
     @staticmethod
     def _is_anchored(record, anchors):
