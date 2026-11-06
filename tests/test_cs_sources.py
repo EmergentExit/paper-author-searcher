@@ -1,5 +1,6 @@
 """Computer-science sources: arXiv author search and OpenReview profiles (synthetic responses only)."""
 
+import threading
 import unittest
 import xml.etree.ElementTree as ET
 
@@ -68,6 +69,64 @@ class ArxivAuthorSearchTests(unittest.TestCase):
         collected = PaperCollector([NoProviders()], name_searches=[search(FeedClient())]).collect(profile())
         self.assertEqual(collected.selected_author_ids['arxiv'], ['name:mei lin'])
         self.assertEqual([paper.title for paper in collected.papers], ['Mine'])
+
+    def test_name_searches_run_beside_the_author_id_sources_in_order_for_a_settled_identity(self):
+        searching = threading.Event()
+        overlapped = []
+
+        class WaitingProvider:
+            name = 'openalex'
+
+            def collect(self, author_id):
+                overlapped.append(searching.wait(timeout=5))
+                return PaperSourceResult(
+                    source='openalex', author_id=author_id, pagination_complete=True, complete=True
+                )
+
+        class KeyedSearch:
+            def __init__(self, name):
+                self.name, self.seen = name, None
+
+            def author_key(self, profile):
+                return 'name:' + self.name
+
+            def collect(self, profile):
+                searching.set()
+                self.seen = sorted(profile.author_id_aliases)
+                return PaperSourceResult(source=self.name, author_id=self.author_key(profile), complete=True)
+
+        first, second = KeyedSearch('first'), KeyedSearch('second')
+        collected = PaperCollector([WaitingProvider()], name_searches=[first, second]).collect(profile())
+        self.assertEqual(overlapped, [True])
+        self.assertEqual([source.source for source in collected.sources], ['openalex', 'first', 'second'])
+        self.assertEqual((first.seen, second.seen), (['openalex'], ['first', 'openalex']))
+        self.assertEqual(collected.selected_author_ids['second'], ['name:second'])
+
+    def test_a_contest_does_not_search_names_alongside_the_author_id_sources(self):
+        order = []
+
+        class Provider:
+            name = 'openalex'
+
+            def collect(self, author_id):
+                order.append('id ' + author_id)
+                return PaperSourceResult(
+                    source='openalex', author_id=author_id, pagination_complete=True, complete=True
+                )
+
+        class Search:
+            name = 'arxiv'
+
+            def author_key(self, profile):
+                return 'name:mei lin'
+
+            def collect(self, profile):
+                order.append('name')
+                return PaperSourceResult(source='arxiv', author_id='name:mei lin', complete=True)
+
+        contest = profile(status='ambiguous_contenders', author_id_aliases={'openalex': ['A1', 'B1']})
+        PaperCollector([Provider()], name_searches=[Search()]).collect(contest)
+        self.assertNotIn('name', order)
 
 
 class OpenReviewTests(unittest.TestCase):
