@@ -2,6 +2,7 @@
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextvars import copy_context
 from dataclasses import dataclass
 from itertools import combinations
 from typing import Any
@@ -68,11 +69,7 @@ class ProfessorResolver:
 
     def rank(self, query):
         """Scored identity profiles, the candidate groups behind them, and per-source errors."""
-        with phase('identity: candidate search'):
-            records, errors = self._collect_candidates(query)
-        # The finder also discovers hints the caller did not give (identity_discovery), so it runs for every query.
-        with phase('identity: anchors'):
-            anchors = self.anchor_finder.find(query) if self.anchor_finder else IdentityAnchors()
+        records, errors, anchors = self._search_and_find_anchors(query)
         if anchors.errors:
             errors['anchors'] = '; '.join(anchors.errors)
         with phase('identity: anchored profile lookups'):
@@ -90,6 +87,26 @@ class ProfessorResolver:
         with phase('identity: adjudication'):
             scored = self._adjudicate(query, scored, anchors)
         return [profile for profile, _ in scored], [group for _, group in scored], errors
+
+    def _search_and_find_anchors(self, query):
+        """Candidate search and anchor finding, side by side: neither reads the other's results, so running them
+        together changes nothing but the wait."""
+        # The finder also discovers hints the caller did not give (identity_discovery), so it runs for every query.
+        if self.anchor_finder is None:
+            with phase('identity: candidate search'):
+                records, errors = self._collect_candidates(query)
+            return records, errors, IdentityAnchors()
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix='identity-anchors') as pool:
+            # The worker runs in a copy of this context, so its phases are timed in this run.
+            anchoring = pool.submit(copy_context().run, self._find_anchors, query)
+            with phase('identity: candidate search'):
+                records, errors = self._collect_candidates(query)
+            anchors = anchoring.result()
+        return records, errors, anchors
+
+    def _find_anchors(self, query):
+        with phase('identity: anchors'):
+            return self.anchor_finder.find(query)
 
     def _disambiguate(self, query, scored):
         """Let the contenders' own bylines settle a close contest the scores leave open."""

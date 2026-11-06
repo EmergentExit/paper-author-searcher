@@ -2,6 +2,7 @@
 
 import dataclasses
 import json
+import threading
 import unittest
 
 from paper_author_searcher import AuthorCandidate as C
@@ -174,6 +175,28 @@ class ResolverAnchorTests(unittest.TestCase):
         provider = Provider(records, extra)
         resolver = ProfessorResolver([provider], anchor_finder=FixedAnchors(found))
         return resolver.resolve(query()), provider
+
+    def test_candidate_search_runs_while_anchors_are_found_and_the_result_is_unchanged(self):
+        finding = threading.Event()
+        overlapped = []
+
+        class SlowAnchors(FixedAnchors):
+            def find(self, query):
+                finding.set()
+                return super().find(query)
+
+        class WaitingProvider(Provider):
+            def search(self, query):
+                overlapped.append(finding.wait(timeout=5))
+                return super().search(query)
+
+        records = [C('openalex', 'A1', 'Mei Lin', SCHOOL), C('openalex', 'B1', 'Mei Lin', SCHOOL)]
+        result = ProfessorResolver([WaitingProvider(records)], anchor_finder=SlowAnchors(anchors('B1'))).resolve(
+            query()
+        )
+        self.assertEqual(overlapped, [True])
+        self.assertEqual(result.profile.author_ids['openalex'], 'B1')
+        self.assertEqual(result, self.resolve(records, anchors('B1'))[0])
 
     def test_anchor_breaks_a_close_namesake_tie(self):
         result, _ = self.resolve(
