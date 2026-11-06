@@ -71,6 +71,10 @@ DEFAULT_COLLECTION = CollectionConfig()
 class OwnershipConfig:
     # A name is rare when the person's own author IDs hold at least this share of the works under that exact name.
     rare_name_minimum_share: float = 0.9
+    # Author records read per exact-name search when judging a name's rarity.
+    rare_name_search_results: int = 25
+    # Works asked of OpenAlex per request when reading the institutions on papers' bylines.
+    byline_lookup_batch_size: int = 40
     # Papers it frees must be in a field holding this share of the person's proven papers, of which at least this
     # many must carry a field.
     rare_name_minimum_field_share: float = 0.1
