@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 MAXIMUM_PAGE_SIZE = 200
 
 
-def add_hint_arguments(parser):
+def add_hint_arguments(parser) -> None:
     """Optional identity hints; each one makes namesake disambiguation far more reliable."""
     parser.add_argument('--orcid', help='ORCID iD of the researcher')
     parser.add_argument('--homepage', help='Public homepage or CV URL; DOIs/arXiv links on it become anchors')
@@ -72,7 +72,7 @@ def query_from_args(args):
     )
 
 
-def add_workflow_arguments(parser):
+def add_workflow_arguments(parser) -> None:
     add_settings_argument(parser)
     parser.add_argument('--mode', choices=MODES, help='metadata, pdf-urls, or full workflow')
     parser.add_argument('--input', type=Path, help='Resolver, Collector, PDF URL JSON or workflow report')
@@ -153,7 +153,7 @@ def build_workflow(args, settings: Settings | None = None):
     return build_container(args, settings).workflow()
 
 
-def _show_candidates(report, verbose=False):
+def _show_candidates(report, verbose: bool = False) -> None:
     identity = report.get('identity') or {}
     candidates = identity.get('candidates') or []
     visible = candidates if verbose else candidates[:2]

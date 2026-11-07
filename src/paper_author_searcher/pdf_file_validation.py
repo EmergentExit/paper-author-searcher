@@ -347,7 +347,7 @@ WORKER_BOOTSTRAP = (
 
 
 class PDFFileValidator:
-    def __init__(self, config=DEFAULT_DOWNLOAD):
+    def __init__(self, config=DEFAULT_DOWNLOAD) -> None:
         self.config = config
         if importlib.util.find_spec('pypdf') is None:
             raise RuntimeError('Install the download extra: pip install -e ".[download]"')
@@ -399,7 +399,7 @@ def layout_text(path, layouts):
     return [extract_text(path, page_numbers=[0], maxpages=1, laparams=LAParams(**layout)) for layout in layouts]
 
 
-def extract_pages(path, destination, pages):
+def extract_pages(path, destination, pages) -> None:
     """Copy a PDF's first ``pages`` pages to ``destination`` (a parser worker's job: the file is untrusted)."""
     from pypdf import PdfReader, PdfWriter
 
@@ -449,7 +449,7 @@ def front_pages(path, pages, config=DEFAULT_DOWNLOAD):
             return None
 
 
-def _apply_worker_limits(config):
+def _apply_worker_limits(config) -> None:
     try:
         import resource
 
@@ -458,7 +458,7 @@ def _apply_worker_limits(config):
         pass
 
 
-def _worker():
+def _worker() -> None:
     request = json.load(sys.stdin)
     config = DownloadConfig(**request['config'])
     _apply_worker_limits(config)

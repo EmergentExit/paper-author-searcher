@@ -46,8 +46,8 @@ def prepare_reference(pages: JSONList, professor_name: str, client: Any) -> JSON
             authors = [byline_forms(author)[-1] for author in original_authors]
             date = (values.get('citation_publication_date') or values.get('citation_date') or [''])[0]
             year = parse_year(date[:4])
-            doi = (values.get('citation_doi') or [None])[0]
-            arxiv = (values.get('citation_arxiv_id') or [None])[0]
+            doi = next(iter(values.get('citation_doi') or []), None)
+            arxiv = next(iter(values.get('citation_arxiv_id') or []), None)
             if not doi and (not authors or year is None):
                 raise SourceError('Reference page lacks a DOI or complete title/year/authors metadata')
             compatible = any(

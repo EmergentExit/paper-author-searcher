@@ -1,11 +1,14 @@
 """Preprint and working-paper repositories: arXiv and NBER."""
 
 import re
+import xml.etree.ElementTree as ET
+from typing import Any
 
-from paper_author_searcher.config import DEFAULT_PDF
-from paper_author_searcher.http import SourceError
+from paper_author_searcher.config import DEFAULT_PDF, PDFConfig
+from paper_author_searcher.http import HttpTransport, SourceError
+from paper_author_searcher.json_types import JSONList, JSONObject
 from paper_author_searcher.matching import normalize_title
-from paper_author_searcher.models import PDFProviderResult
+from paper_author_searcher.models import PDFCandidate, PDFProviderResult
 from paper_author_searcher.pacing import RequestPacer
 from paper_author_searcher.pdf_identity import (
     arxiv_id,
@@ -30,16 +33,16 @@ class NBERPDFProvider(MetadataPDFProvider):
 
     name = 'nber'
 
-    def __init__(self, client, config=DEFAULT_PDF):
+    def __init__(self, client: HttpTransport, config: PDFConfig = DEFAULT_PDF) -> None:
         super().__init__(client)
         self.config = config
 
-    def lookups(self, paper):
+    def lookups(self, paper: JSONObject) -> list[str]:
         own = [doi[len('doi:') :] for doi in sorted(paper_dois(paper))]
         numbers = [self._number(doi) for doi in [*own, *related_dois(paper)]]
         return list(dict.fromkeys(number for number in numbers if number))
 
-    def lookup(self, paper, identifier):
+    def lookup(self, paper: JSONObject, identifier: str) -> tuple[list[PDFCandidate], JSONList]:
         own = {self._number(doi[len('doi:') :]) for doi in paper_dois(paper)}
         if identifier in own:
             identity = (IdentityStatus.VERIFIED, ['Exact DOI agreement with saved paper metadata'])
@@ -55,7 +58,7 @@ class NBERPDFProvider(MetadataPDFProvider):
         )
         return [candidate], []
 
-    def _number(self, doi):
+    def _number(self, doi: str) -> str | None:
         match = re.match(self.config.nber_doi_pattern, doi or '', flags=re.IGNORECASE)
         return match.group(1).lower() if match else None
 
@@ -65,12 +68,12 @@ class ArxivPDFProvider:
     atom = '{http://www.w3.org/2005/Atom}'
     arxiv = '{http://arxiv.org/schemas/atom}'
 
-    def __init__(self, client, config=DEFAULT_PDF):
+    def __init__(self, client: HttpTransport, config: PDFConfig = DEFAULT_PDF) -> None:
         self.client = client
         self.config = config
         self.pacer = RequestPacer(config.arxiv_request_interval)
 
-    def find(self, paper):
+    def find(self, paper: JSONObject) -> PDFProviderResult:
         identifiers = arxiv_ids(paper)
         search = not identifiers and self.config.arxiv_title_search and bool(paper.get('title'))
         if not identifiers and not search:
@@ -78,7 +81,7 @@ class ArxivPDFProvider:
         result = PDFProviderResult(self.name)
         try:
             self._wait_for_interval()
-            params = {'id_list': ','.join(identifiers)}
+            params: dict[str, Any] = {'id_list': ','.join(identifiers)}
             if search:
                 title = ' '.join(paper['title'].replace('"', ' ').split())
                 params = {'search_query': 'ti:"' + title + '"', 'max_results': self.config.arxiv_search_results}
@@ -97,10 +100,12 @@ class ArxivPDFProvider:
             result.errors.append(str(exc))
         return result
 
-    def _wait_for_interval(self):
+    def _wait_for_interval(self) -> None:
         self.pacer.wait()
 
-    def _entry_candidates(self, paper, requested, entry, search=False):
+    def _entry_candidates(
+        self, paper: JSONObject, requested: list[str], entry: ET.Element, search: bool = False
+    ) -> list[PDFCandidate]:
         identifier = arxiv_id(entry.findtext(self.atom + 'id'))
         if not identifier or (not search and not any(same_arxiv_version(value, identifier) for value in requested)):
             raise SourceError('arXiv entry does not match the requested identifier/version')

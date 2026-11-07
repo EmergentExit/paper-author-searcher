@@ -1,28 +1,34 @@
 """Bind public PDF metadata to a saved paper without guessing resource paths."""
 
 import re
+from collections.abc import Iterable, Iterator, Sequence
+from typing import Any
 from urllib.parse import urlsplit
 
 from .config import DEFAULT_PDF, PDFConfig
+from .json_types import JSONList, JSONObject
 from .matching import ARXIV_DOI_PREFIX, arxiv_from_doi, canonical_arxiv, canonical_doi, normalize_title
 from .paper_authorship import byline_forms
 from .paper_deduplication import author_signatures_match
 from .source_traits import ARXIV, bare_id, traits_of
 from .status import IdentityStatus, OwnershipStatus
 
+# An identity status and the evidence for it.
+IdentityVerdict = tuple[IdentityStatus, list[str]]
 
-def source_records(paper):
+
+def source_records(paper: JSONObject) -> JSONList:
     records = paper.get('records') or [paper]
     return [record for record in records if record.get('ownership_status') != OwnershipStatus.REJECTED]
 
 
-def native_id(source, value):
+def native_id(source: str, value: object) -> str:
     value = str(value or '').strip()
     identifier = bare_id(source, value)
     return identifier.upper() if traits_of(source).case_insensitive_paper_ids else identifier
 
 
-def paper_ids(paper, source):
+def paper_ids(paper: JSONObject, source: str) -> list[str]:
     identifiers = []
     for record in source_records(paper):
         if record.get('source') == source and record.get('source_paper_id'):
@@ -33,7 +39,7 @@ def paper_ids(paper, source):
     return list(dict.fromkeys(identifiers))
 
 
-def paper_dois(paper):
+def paper_dois(paper: JSONObject) -> set[str]:
     identifiers = set()
     for record in [paper, *source_records(paper)]:
         if record.get('doi'):
@@ -45,16 +51,16 @@ def paper_dois(paper):
 
 
 def metadata_identity(
-    paper,
-    source,
-    identifier=None,
-    doi=None,
-    title=None,
-    year=None,
-    authors=None,
-    editions=(),
+    paper: JSONObject,
+    source: str,
+    identifier: str | None = None,
+    doi: str | None = None,
+    title: str | None = None,
+    year: object = None,
+    authors: Sequence[Any] | None = None,
+    editions: Iterable[str] = (),
     config: PDFConfig = DEFAULT_PDF,
-):
+) -> IdentityVerdict:
     """Stable identifiers bind a location; conflicting metadata blocks it.
 
     One work has editions: its arXiv preprint and its journal or proceedings version carry different DOIs, and the
@@ -93,7 +99,9 @@ def metadata_identity(
     return IdentityStatus.UNVERIFIED, ['Insufficient metadata to associate URL with this paper']
 
 
-def _names_edition(paper, source, identifier, doi, editions):
+def _names_edition(
+    paper: JSONObject, source: str, identifier: str | None, doi: str | None, editions: Iterable[str]
+) -> bool:
     own = {canonical_arxiv(value) for value in edition_arxiv_ids(paper)} - {None}
     if not own:
         return False
@@ -104,7 +112,7 @@ def _names_edition(paper, source, identifier, doi, editions):
     return bool(own & (named - {None}))
 
 
-def _shared_authors(paper, observed, config):
+def _shared_authors(paper: JSONObject, observed: Sequence[Any] | None, config: PDFConfig) -> bool:
     """Whether some saved author list and the source share enough author signatures (all of a shorter list)."""
     if not observed:
         return False
@@ -123,14 +131,14 @@ def _shared_authors(paper, observed, config):
     return False
 
 
-def _years_agree(observed, expected, tolerance):
+def _years_agree(observed: object, expected: object, tolerance: int) -> bool:
     try:
         return abs(int(str(observed)[:4]) - int(str(expected)[:4])) <= tolerance
     except (TypeError, ValueError):
         return False
 
 
-def _author_lists(paper):
+def _author_lists(paper: JSONObject) -> Iterator[list[Any]]:
     yield paper.get('authors') or []
     for record in source_records(paper):
         if record.get('authors_complete') is not True:
@@ -143,7 +151,7 @@ def _author_lists(paper):
         yield [author['name'] for author in details]
 
 
-def _authors_agree(expected, observed):
+def _authors_agree(expected: Sequence[Any], observed: Sequence[Any]) -> bool:
     if not expected or len(expected) != len(observed):
         return False
     unused = list(observed)
@@ -159,7 +167,7 @@ def _authors_agree(expected, observed):
     return True
 
 
-def _signature_agrees(left, right):
+def _signature_agrees(left: Any, right: Any) -> bool:
     for left_form in byline_forms(left):
         for right_form in byline_forms(right):
             if author_signatures_match(left_form, right_form):
@@ -167,7 +175,7 @@ def _signature_agrees(left, right):
     return False
 
 
-def arxiv_id(value):
+def arxiv_id(value: object) -> str | None:
     """Recognize supplied arXiv identifiers, including explicit version suffixes."""
     value = str(value or '').strip()
     if '://' in value:
@@ -182,14 +190,14 @@ def arxiv_id(value):
     return None
 
 
-def arxiv_ids(paper):
+def arxiv_ids(paper: JSONObject) -> list[str]:
     identifiers = []
     for record in source_records(paper):
         for key, value in (record.get('external_ids') or {}).items():
-            if key.lower() == 'arxiv' and arxiv_id(value):
-                identifiers.append(arxiv_id(value))
-        if arxiv_id(record.get('paper_url')):
-            identifiers.append(arxiv_id(record['paper_url']))
+            if key.lower() == 'arxiv' and (found := arxiv_id(value)):
+                identifiers.append(found)
+        if found := arxiv_id(record.get('paper_url')):
+            identifiers.append(found)
         metadata = record.get('raw_metadata') or {}
         for location in metadata.get('locations') or []:
             if not isinstance(location, dict):
@@ -207,7 +215,7 @@ def arxiv_ids(paper):
     return list(dict.fromkeys(identifiers))
 
 
-def related_dois(paper):
+def related_dois(paper: JSONObject) -> list[str]:
     """DOIs of the editions deduplication related to the paper (same normalized title, compatible authors)."""
     dois = []
     metadata = paper.get('paper_metadata') or {}
@@ -218,22 +226,22 @@ def related_dois(paper):
     return list(dict.fromkeys(dois))
 
 
-def edition_arxiv_ids(paper):
+def edition_arxiv_ids(paper: JSONObject) -> list[str]:
     """arXiv identifiers of the paper and of the editions deduplication related to it (same normalized title and
     compatible authors). A PDF printing one of them is an edition of this work only if its title also matches."""
     identifiers = list(arxiv_ids(paper))
     metadata = paper.get('paper_metadata') or {}
     for related in paper.get('related_versions') or metadata.get('related_versions') or []:
         for identifier in (related or {}).get('identifiers') or []:
-            if identifier.get('source') == ARXIV and arxiv_id(identifier.get('paper_id')):
-                identifiers.append(arxiv_id(identifier['paper_id']))
+            if identifier.get('source') == ARXIV and (found := arxiv_id(identifier.get('paper_id'))):
+                identifiers.append(found)
             doi = canonical_doi(identifier.get('doi') or '')
-            if doi.startswith('doi:' + ARXIV_DOI_PREFIX) and arxiv_id(doi[len('doi:' + ARXIV_DOI_PREFIX) :]):
-                identifiers.append(arxiv_id(doi[len('doi:' + ARXIV_DOI_PREFIX) :]))
+            if doi.startswith('doi:' + ARXIV_DOI_PREFIX) and (found := arxiv_id(doi[len('doi:' + ARXIV_DOI_PREFIX) :])):
+                identifiers.append(found)
     return list(dict.fromkeys(identifiers))
 
 
-def same_arxiv_version(requested, returned):
+def same_arxiv_version(requested: str, returned: str) -> bool:
     if re.search(r'v\d+$', requested):
         return requested == returned
     return requested == re.sub(r'v\d+$', '', returned)

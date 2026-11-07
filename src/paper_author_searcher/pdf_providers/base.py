@@ -4,12 +4,14 @@ from abc import ABC, abstractmethod
 from http import HTTPStatus
 from typing import Any, ClassVar, Protocol
 
-from paper_author_searcher.config import DEFAULT_SOURCES
-from paper_author_searcher.http import SourceError
+from paper_author_searcher.config import DEFAULT_SOURCES, SourceConfig
+from paper_author_searcher.http import HttpTransport, SourceError
+from paper_author_searcher.json_types import JSONObject
 from paper_author_searcher.models import PDFCandidate, PDFProviderResult
+from paper_author_searcher.pdf_identity import IdentityVerdict
 from paper_author_searcher.status import ProviderStatus
 
-VERSION_TYPES = {
+VERSION_TYPES: dict[str | None, str] = {
     'publishedVersion': 'published_version',
     'acceptedVersion': 'accepted_manuscript',
     'submittedVersion': 'submitted_manuscript',
@@ -29,7 +31,15 @@ class PDFProvider(Protocol):
     def find(self, paper: Any) -> PDFProviderResult: ...
 
 
-def make_candidate(url, source, identity, metadata, access_basis, version=None, license=None):
+def make_candidate(
+    url: object,
+    source: str,
+    identity: IdentityVerdict,
+    metadata: JSONObject,
+    access_basis: str,
+    version: str | None = None,
+    license: str | None = None,
+) -> PDFCandidate:
     if not isinstance(url, str):
         raise SourceError('Malformed PDF URL: expected a string')
     version_type = VERSION_TYPES.get(version, 'unknown')
@@ -58,11 +68,11 @@ class MetadataPDFProvider(ABC):
     def lookup(self, paper: dict, identifier: str) -> tuple[list[Any], list[Any]]:
         """Return ``(pdf_candidates, landing_pages)`` for one identifier."""
 
-    def __init__(self, client, sources=DEFAULT_SOURCES):
+    def __init__(self, client: HttpTransport, sources: SourceConfig = DEFAULT_SOURCES) -> None:
         self.client = client
         self.sources = sources
 
-    def find(self, paper):
+    def find(self, paper: JSONObject) -> PDFProviderResult:
         result = PDFProviderResult(self.name)
         lookups = self.lookups(paper)
         if not lookups:

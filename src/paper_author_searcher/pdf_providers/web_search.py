@@ -3,13 +3,15 @@
 import re
 from urllib.parse import urlsplit
 
-from paper_author_searcher.config import DEFAULT_PDF
+from paper_author_searcher.config import DEFAULT_PDF, PDFConfig
 from paper_author_searcher.http import SourceError
+from paper_author_searcher.json_types import JSONObject
 from paper_author_searcher.matching import normalize_title
 from paper_author_searcher.models import PDFProviderResult
 from paper_author_searcher.status import IdentityStatus, ProviderStatus
+from paper_author_searcher.web_search import WebSearch
 
-from .base import make_candidate
+from .base import PDFProvider, make_candidate
 
 UNBOUND = (IdentityStatus.UNVERIFIED, ['A web search hit; only the content of the file can tie it to the paper'])
 
@@ -23,14 +25,14 @@ class WebSearchPDFProvider:
 
     name = 'web_search'
 
-    def __init__(self, search, pages, config=DEFAULT_PDF):
+    def __init__(self, search: WebSearch, pages: PDFProvider, config: PDFConfig = DEFAULT_PDF) -> None:
         self.search = search
         self.pages = pages
         self.config = config
         self.pdf_url = re.compile(config.web_search_pdf_url_pattern, re.IGNORECASE)
         self.stopped = False
 
-    def find(self, paper):
+    def find(self, paper: JSONObject) -> PDFProviderResult:
         result = PDFProviderResult(self.name)
         title = paper.get('title')
         if not title or self.stopped:
@@ -56,12 +58,12 @@ class WebSearchPDFProvider:
         self._read_pages(paper, pages[: self.config.web_search_landing_pages], result)
         return result
 
-    def _query(self, paper):
+    def _query(self, paper: JSONObject) -> str:
         names = (paper.get('authors') or [])[: self.config.web_search_query_authors]
         surnames = ' '.join(name.split()[-1] for name in names if name.split())
         return ' '.join(self.config.web_search_query.format(title=paper['title'], authors=surnames).split())
 
-    def _allowed(self, url):
+    def _allowed(self, url: str) -> bool:
         host = (urlsplit(url).hostname or '').lower()
         if any(word in host for word in self.config.web_search_excluded_host_words):
             return False
@@ -69,7 +71,7 @@ class WebSearchPDFProvider:
             host == excluded or host.endswith('.' + excluded) for excluded in self.config.web_search_excluded_hosts
         )
 
-    def _read_pages(self, paper, urls, result):
+    def _read_pages(self, paper: JSONObject, urls: list[str], result: PDFProviderResult) -> None:
         if not urls:
             return
         # Only these pages: an empty record hides the paper's own pages, which public_pages has already read.

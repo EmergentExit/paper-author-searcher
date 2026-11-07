@@ -1,8 +1,10 @@
 """PDFs the person's own publication page links next to a citation of the paper."""
 
+from collections.abc import Iterable, Iterator
 from typing import Any
 
-from paper_author_searcher.config import DEFAULT_PDF
+from paper_author_searcher.config import DEFAULT_PDF, PDFConfig
+from paper_author_searcher.json_types import JSONObject
 from paper_author_searcher.matching import ARXIV_DOI_PREFIX, canonical_doi, normalize_title
 from paper_author_searcher.models import PDFProviderResult
 from paper_author_searcher.pdf_identity import arxiv_id, edition_arxiv_ids, paper_dois, related_dois
@@ -22,22 +24,22 @@ class HomepagePDFProvider:
 
     name = 'homepage'
 
-    def __init__(self, config=DEFAULT_PDF):
+    def __init__(self, config: PDFConfig = DEFAULT_PDF) -> None:
         self.config = config
         self.listed: list[dict[str, Any]] = []
         self.ambiguous: set[str] = set()
 
-    def prepare_profile(self, profile):
+    def prepare_profile(self, profile: JSONObject | None) -> None:
         self.listed = [item for item in (profile or {}).get('listed_pdfs') or [] if item.get('url')]
 
-    def prepare(self, papers):
+    def prepare(self, papers: Iterable[JSONObject]) -> None:
         works: dict[str, set[str]] = {}
         for paper in papers:
             for item, _ in self._matches(paper):
                 works.setdefault(item['url'], set()).add(normalize_title(paper.get('title') or ''))
         self.ambiguous = {url for url, titles in works.items() if len(titles) > 1}
 
-    def find(self, paper):
+    def find(self, paper: JSONObject) -> PDFProviderResult:
         result = PDFProviderResult(self.name)
         for item, reason in self._matches(paper):
             if item['url'] in self.ambiguous:
@@ -57,7 +59,7 @@ class HomepagePDFProvider:
             result.status = ProviderStatus.NOT_APPLICABLE
         return result
 
-    def _matches(self, paper):
+    def _matches(self, paper: JSONObject) -> Iterator[tuple[dict[str, Any], str]]:
         dois = {doi[len('doi:') :] for doi in paper_dois(paper)} | set(related_dois(paper))
         editions = set(edition_arxiv_ids(paper))
         title = normalize_title(paper.get('title') or '')
