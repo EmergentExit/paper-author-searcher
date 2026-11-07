@@ -1,8 +1,8 @@
 import unittest
 import xml.etree.ElementTree as ET
 
-from paper_author_searcher.dblp_format import arxiv_ids, base_name, plain_title
-from paper_author_searcher.paper_providers import dblp_record
+from paper_author_searcher.collection.dblp_format import arxiv_ids, base_name, plain_title
+from paper_author_searcher.collection.paper_providers import dblp_record
 
 
 class DblpFormatTests(unittest.TestCase):

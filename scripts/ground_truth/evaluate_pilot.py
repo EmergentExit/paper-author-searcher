@@ -10,7 +10,12 @@ from pathlib import Path
 from scripts.ground_truth.build_candidates import read_json, write_json
 from scripts.ground_truth.export_truth import completeness_reasons, human_attestation
 
-from paper_author_searcher.evaluation_matching import GroundTruth, GroundTruthMatcher, TruthMatch, stable_identifiers
+from paper_author_searcher.quality.evaluation_matching import (
+    GroundTruth,
+    GroundTruthMatcher,
+    TruthMatch,
+    stable_identifiers,
+)
 
 
 def fingerprint(value):

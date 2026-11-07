@@ -8,10 +8,10 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from paper_author_searcher.evaluation import Evaluator
-from paper_author_searcher.evaluation_cli import main
-from paper_author_searcher.evaluation_matching import GroundTruth, GroundTruthMatcher
+from paper_author_searcher.cli.evaluate import main
 from paper_author_searcher.matching import arxiv_from_doi, canonical_arxiv
+from paper_author_searcher.quality.evaluation import Evaluator
+from paper_author_searcher.quality.evaluation_matching import GroundTruth, GroundTruthMatcher
 
 
 def truth_paper(evaluation_id, label='belongs', doi=None):
@@ -343,7 +343,7 @@ class ResolverAndCLITests(unittest.TestCase):
             result.write_text(json.dumps(saved([entry('a')])), encoding='utf-8')
             gold.write_text(json.dumps(truth([truth_paper('a')])), encoding='utf-8')
             with patch(
-                'paper_author_searcher.http_transport.KeepAliveTransport.open',
+                'paper_author_searcher.transport.http_transport.KeepAliveTransport.open',
                 side_effect=AssertionError('Must remain offline'),
             ):
                 with redirect_stdout(io.StringIO()):

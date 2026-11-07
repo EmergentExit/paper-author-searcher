@@ -9,17 +9,21 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
 
-from paper_author_searcher.candidate_diagnostics import collect_candidate
+from paper_author_searcher.collection.candidate_diagnostics import collect_candidate
+from paper_author_searcher.collection.reference_import import prepare_reference
 from paper_author_searcher.config import DEFAULT_PDF
-from paper_author_searcher.evaluation_matching import GroundTruth, GroundTruthMatcher
-from paper_author_searcher.http import URLProbe
+from paper_author_searcher.fulltext.pdf_catalogs import JournalCatalogPDFProvider, catalog_links
+from paper_author_searcher.fulltext.pdf_identity import metadata_identity
+from paper_author_searcher.fulltext.pdf_providers import (
+    ArxivPDFProvider,
+    OpenAlexPDFProvider,
+    SemanticScholarPDFProvider,
+)
 from paper_author_searcher.models import PaperRecord, PaperSourceResult, ProfessorProfile
-from paper_author_searcher.pdf_catalogs import JournalCatalogPDFProvider, catalog_links
-from paper_author_searcher.pdf_identity import metadata_identity
-from paper_author_searcher.pdf_providers import ArxivPDFProvider, OpenAlexPDFProvider, SemanticScholarPDFProvider
-from paper_author_searcher.performance_diagnostics import ownership_diagnostics, pdf_failure_reasons
-from paper_author_searcher.performance_evaluation import PerformanceEvaluator, compare_performance
-from paper_author_searcher.reference_import import prepare_reference
+from paper_author_searcher.quality.evaluation_matching import GroundTruth, GroundTruthMatcher
+from paper_author_searcher.quality.performance_diagnostics import ownership_diagnostics, pdf_failure_reasons
+from paper_author_searcher.quality.performance_evaluation import PerformanceEvaluator, compare_performance
+from paper_author_searcher.transport.http import URLProbe
 from test_evaluation import entry, saved, truth, truth_paper
 from test_pdf_providers import openalex_work, paper
 

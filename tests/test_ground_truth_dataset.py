@@ -6,8 +6,8 @@ from pathlib import Path
 from scripts.ground_truth.build_candidates import build_candidates, export_candidates
 from scripts.ground_truth.review_candidates import validate_reviews
 
-from paper_author_searcher.evaluation_matching import GroundTruth
-from paper_author_searcher.performance_evaluation import PerformanceEvaluator
+from paper_author_searcher.quality.evaluation_matching import GroundTruth
+from paper_author_searcher.quality.performance_evaluation import PerformanceEvaluator
 
 
 def scope():

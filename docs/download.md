@@ -4,7 +4,7 @@
 
 ```bash
 python3 -m pip install -e '.[download]'
-python3 -m paper_author_searcher.download_cli \
+python3 -m paper_author_searcher.cli.download \
   --input papers.pdf_urls.json --output-dir downloaded_papers \
   --max-downloads 3 --timeout 15 --retries 2 --max-file-mb 50
 ```

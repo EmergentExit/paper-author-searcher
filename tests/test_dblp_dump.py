@@ -12,24 +12,24 @@ from pathlib import Path
 from unittest import mock
 
 from paper_author_searcher import ProfessorQuery as Q
-from paper_author_searcher import dblp_dump
-from paper_author_searcher.composition import RunOptions, ServiceContainer
-from paper_author_searcher.config import DEFAULT_DBLP_DUMP
-from paper_author_searcher.dblp_cli import main as dblp_main
-from paper_author_searcher.dblp_dump import (
+from paper_author_searcher.cli.dblp_index import main as dblp_main
+from paper_author_searcher.collection import dblp_dump
+from paper_author_searcher.collection.dblp_dump import (
     DblpDumpClient,
     DblpDumpIndex,
     DblpDumpIndexer,
     DblpWorkLookup,
     base_name,
 )
-from paper_author_searcher.http import SourceError
-from paper_author_searcher.listed_works import AuthorMatcher
+from paper_author_searcher.collection.listed_works import AuthorMatcher
+from paper_author_searcher.collection.paper_providers import DBLPPaperProvider
+from paper_author_searcher.composition import RunOptions, ServiceContainer
+from paper_author_searcher.config import DEFAULT_DBLP_DUMP
 from paper_author_searcher.matching import work_keys
 from paper_author_searcher.models import ProfessorProfile
-from paper_author_searcher.paper_providers import DBLPPaperProvider
-from paper_author_searcher.providers import DBLPProvider
+from paper_author_searcher.resolution.providers import DBLPProvider
 from paper_author_searcher.settings import Settings
+from paper_author_searcher.transport.http import SourceError
 
 DUMP = """<?xml version="1.0" encoding="ISO-8859-1"?>
 <!DOCTYPE dblp SYSTEM "dblp.dtd">

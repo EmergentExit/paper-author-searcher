@@ -20,14 +20,14 @@ mcp = ["mcp>=2.3,<3", "uvicorn>=0.31"]
 dev = ["grpcio-tools==1.71.0", "ruff==0.8.6", "mypy==1.14.1", "pre-commit==3.5.0", "coverage[toml]==7.6.1", "hypothesis==6.113.0"]
 
 [project.scripts]
-professor-resolve = "paper_author_searcher.cli:main"
-paper-evaluate = "paper_author_searcher.evaluation_cli:main"
-pdf-resolve = "paper_author_searcher.pdf_cli:main"
-pdf-download = "paper_author_searcher.download_cli:main"
-paper-search = "paper_author_searcher.workflow_cli:main"
-paper-dblp-index = "paper_author_searcher.dblp_cli:main"
-paper-catalog-index = "paper_author_searcher.catalog_cli:main"
-paper-performance = "paper_author_searcher.performance_cli:main"
+professor-resolve = "paper_author_searcher.cli.resolve:main"
+paper-evaluate = "paper_author_searcher.cli.evaluate:main"
+pdf-resolve = "paper_author_searcher.cli.pdf:main"
+pdf-download = "paper_author_searcher.cli.download:main"
+paper-search = "paper_author_searcher.cli.search:main"
+paper-dblp-index = "paper_author_searcher.cli.dblp_index:main"
+paper-catalog-index = "paper_author_searcher.cli.catalog_index:main"
+paper-performance = "paper_author_searcher.cli.performance:main"
 paper-benchmark = "paper_author_searcher.benchmark.cli:main"
 paper-search-api = "paper_author_searcher.api.server:main"
 

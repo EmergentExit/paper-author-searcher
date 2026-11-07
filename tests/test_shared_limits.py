@@ -9,19 +9,19 @@ from types import SimpleNamespace
 from unittest import mock
 
 from paper_author_searcher.composition import RunOptions, ServiceContainer, TransportLimits, llm_ledger_name
-from paper_author_searcher.http import SourceError
-from paper_author_searcher.http_budget import (
+from paper_author_searcher.resolution.publication_extraction import ClaudeJsonCompletion
+from paper_author_searcher.service.shared_limits import SqliteSharedLimits
+from paper_author_searcher.settings import Settings
+from paper_author_searcher.transport.http import SourceError
+from paper_author_searcher.transport.http_budget import (
     BudgetedHttpClient,
     BudgetExceeded,
     CostLedger,
     release_ledger,
     shared_ledger,
 )
-from paper_author_searcher.http_decorators import PacedHttpClient
-from paper_author_searcher.pacing import RequestPacer
-from paper_author_searcher.publication_extraction import ClaudeJsonCompletion
-from paper_author_searcher.service.shared_limits import SqliteSharedLimits
-from paper_author_searcher.settings import Settings
+from paper_author_searcher.transport.http_decorators import PacedHttpClient
+from paper_author_searcher.transport.pacing import RequestPacer
 
 
 class Clock:

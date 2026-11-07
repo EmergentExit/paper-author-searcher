@@ -4,9 +4,8 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
-from paper_author_searcher.config import DEFAULT_OWNERSHIP
-from paper_author_searcher.ownership import OwnershipContext, default_passes
-from paper_author_searcher.ownership.passes import (
+from paper_author_searcher.collection.ownership import OwnershipContext, default_passes
+from paper_author_searcher.collection.ownership.passes import (
     CrossSourceAgreement,
     CuratedProfileVenues,
     NamesakeGroups,
@@ -14,8 +13,9 @@ from paper_author_searcher.ownership.passes import (
     RecurringCoauthors,
     UnplacedGroups,
 )
-from paper_author_searcher.paper_deduplication import deduplicate_papers
-from paper_author_searcher.paper_ownership import PaperOwnershipValidator
+from paper_author_searcher.collection.paper_deduplication import deduplicate_papers
+from paper_author_searcher.collection.paper_ownership import PaperOwnershipValidator
+from paper_author_searcher.config import DEFAULT_OWNERSHIP
 from paper_author_searcher.status import OwnershipStatus
 from test_paper_validation import profile, record
 

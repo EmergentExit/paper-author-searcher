@@ -8,11 +8,11 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, ClassVar
 
+from paper_author_searcher.collection.paper_collector import IdentityConfirmationRequired
+from paper_author_searcher.collection.paper_reanalysis import saved_collection_profile
 from paper_author_searcher.json_types import JSONObject
 from paper_author_searcher.jsonio import write_json
 from paper_author_searcher.models import ProfessorQuery
-from paper_author_searcher.paper_collector import IdentityConfirmationRequired
-from paper_author_searcher.paper_reanalysis import saved_collection_profile
 from paper_author_searcher.status import WEB_SEARCH_OFF, ResolutionStatus, RunStatus, StageStatus
 
 from .checkpoints import _is_pdf_report, _resolution, _select_identity

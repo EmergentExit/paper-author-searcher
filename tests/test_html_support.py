@@ -1,8 +1,8 @@
 import unittest
 
-from paper_author_searcher.html_support import decode_html, html_encoding
-from paper_author_searcher.pdf_catalogs import catalog_links
-from paper_author_searcher.pdf_public_pages import public_page_links
+from paper_author_searcher.fulltext.pdf_catalogs import catalog_links
+from paper_author_searcher.fulltext.pdf_public_pages import public_page_links
+from paper_author_searcher.transport.html_support import decode_html, html_encoding
 
 
 class DecodingTests(unittest.TestCase):

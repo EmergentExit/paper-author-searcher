@@ -3,14 +3,14 @@
 import tempfile
 import unittest
 
-from paper_author_searcher.http_budget import (
+from paper_author_searcher.transport.http_budget import (
     BudgetConfig,
     BudgetedHttpClient,
     BudgetExceeded,
     CostLedger,
     classify,
 )
-from paper_author_searcher.http_cache import CachingHttpClient
+from paper_author_searcher.transport.http_cache import CachingHttpClient
 
 OPENALEX = 'https://api.openalex.org'
 
@@ -58,7 +58,7 @@ class BudgetTests(unittest.TestCase):
         self.assertAlmostEqual(ledger.spent_usd, 0.001)
 
     def test_budget_error_is_a_source_error_so_providers_degrade_gracefully(self):
-        from paper_author_searcher.http import SourceError
+        from paper_author_searcher.transport.http import SourceError
 
         self.assertTrue(issubclass(BudgetExceeded, SourceError))
 

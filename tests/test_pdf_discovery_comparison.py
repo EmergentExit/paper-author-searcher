@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from paper_author_searcher.pdf_discovery_comparison import compare_runs, summarize_runs
+from paper_author_searcher.quality.pdf_discovery_comparison import compare_runs, summarize_runs
 
 
 def paper(title='A general method', verified=True):
@@ -101,7 +101,8 @@ class ComparisonTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as directory,
             patch(
-                'paper_author_searcher.pdf_discovery_comparison._check_file', return_value=(True, 'verified checksum')
+                'paper_author_searcher.quality.pdf_discovery_comparison._check_file',
+                return_value=(True, 'verified checksum'),
             ),
         ):
             root = self.write_run(Path(directory), 'run', [paper()], [entry])
@@ -141,7 +142,8 @@ class ComparisonTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as directory,
             patch(
-                'paper_author_searcher.pdf_discovery_comparison._check_file', return_value=(True, 'verified checksum')
+                'paper_author_searcher.quality.pdf_discovery_comparison._check_file',
+                return_value=(True, 'verified checksum'),
             ),
         ):
             root = self.write_run(Path(directory), 'run', [paper()], [entry])

@@ -4,7 +4,7 @@ import argparse
 import json
 
 from paper_author_searcher import ProfessorQuery, ProfessorResolver
-from paper_author_searcher.cli import summary
+from paper_author_searcher.cli.resolve import summary
 
 
 def main(argv=None):

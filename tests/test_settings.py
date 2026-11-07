@@ -147,7 +147,7 @@ class CompositionTests(unittest.TestCase):
     def test_workflow_wires_credentials_into_every_consumer(self):
         from argparse import Namespace
 
-        from paper_author_searcher.workflow_cli import build_workflow
+        from paper_author_searcher.cli.search import build_workflow
 
         arguments = Namespace(
             timeout=None, retries=None, max_pages=None, page_size=None, ambiguity_policy=None, mode='pdf-urls',

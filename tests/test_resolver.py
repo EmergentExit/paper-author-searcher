@@ -3,7 +3,7 @@ import unittest
 from paper_author_searcher import AuthorCandidate as C
 from paper_author_searcher import ProfessorQuery as Q
 from paper_author_searcher import ProfessorResolver
-from paper_author_searcher.identity import linked
+from paper_author_searcher.resolution.identity import linked
 
 
 class Provider:

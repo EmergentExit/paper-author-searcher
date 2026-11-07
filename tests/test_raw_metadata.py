@@ -1,9 +1,9 @@
 import unittest
 from dataclasses import asdict
 
+from paper_author_searcher.collection.raw_metadata import apply_policy, retained
 from paper_author_searcher.config import CollectionConfig, RawMetadataPolicy
 from paper_author_searcher.models import Paper, PaperRecord
-from paper_author_searcher.raw_metadata import apply_policy, retained
 
 OPENALEX = {
     'id': 'W1',

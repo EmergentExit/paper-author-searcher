@@ -16,8 +16,6 @@ from unittest import mock
 
 from paper_author_searcher.api.schema import validator
 from paper_author_searcher.config import ServiceConfig
-from paper_author_searcher.http import SourceError
-from paper_author_searcher.http_deadline import SearchDeadline, TimeLimitReached
 from paper_author_searcher.service.facade import SearchService
 from paper_author_searcher.service.files import LocalFileStore, S3FileStore
 from paper_author_searcher.service.indexes import IndexRefresher
@@ -39,6 +37,8 @@ from paper_author_searcher.service.s3 import S3Location, presign
 from paper_author_searcher.service.sqlite import SqliteJobRepository
 from paper_author_searcher.service.worker import SearchWorker, job_key, paper_key
 from paper_author_searcher.settings import Settings
+from paper_author_searcher.transport.http import SourceError
+from paper_author_searcher.transport.http_deadline import SearchDeadline, TimeLimitReached
 
 REQUEST = {'name': 'Ada Lovelace', 'university': 'Example University', 'department': 'Computer Science'}
 CANDIDATES = [

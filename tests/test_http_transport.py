@@ -9,8 +9,8 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 from urllib.request import Request
 
-from paper_author_searcher.http import HttpClient
-from paper_author_searcher.http_transport import KeepAliveTransport
+from paper_author_searcher.transport.http import HttpClient
+from paper_author_searcher.transport.http_transport import KeepAliveTransport
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -188,8 +188,8 @@ class TransportTests(unittest.TestCase):
     def test_configured_proxy_falls_back_to_urllib(self):
         transport = KeepAliveTransport(proxies={'http': 'http://proxy.invalid:3128'})
         with (
-            patch('paper_author_searcher.http_transport.proxy_bypass', return_value=False),
-            patch('paper_author_searcher.http_transport.urlopen', return_value='proxied') as opener,
+            patch('paper_author_searcher.transport.http_transport.proxy_bypass', return_value=False),
+            patch('paper_author_searcher.transport.http_transport.urlopen', return_value='proxied') as opener,
         ):
             self.assertEqual(transport.open(Request(self.base + '/json'), timeout=1), 'proxied')
         opener.assert_called_once()

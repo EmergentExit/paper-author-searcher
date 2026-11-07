@@ -3,17 +3,17 @@
 import dataclasses
 import unittest
 
-from paper_author_searcher.config import PrecisionGuardConfig
-from paper_author_searcher.models import AnchorEvidence, PaperRecord, ProfessorProfile
-from paper_author_searcher.paper_deduplication import deduplicate_papers
-from paper_author_searcher.paper_ownership import PaperOwnershipValidator
-from paper_author_searcher.precision_guards import (
+from paper_author_searcher.collection.paper_deduplication import deduplicate_papers
+from paper_author_searcher.collection.paper_ownership import PaperOwnershipValidator
+from paper_author_searcher.collection.precision_guards import (
     ActiveGuard,
     CommonNamePolicy,
     DepartmentMatcher,
     GuardContext,
     PrecisionGuard,
 )
+from paper_author_searcher.config import PrecisionGuardConfig
+from paper_author_searcher.models import AnchorEvidence, PaperRecord, ProfessorProfile
 from paper_author_searcher.status import AnchorKind
 
 CS = 'Department of Computer Science and Technology, Tsinghua University, Beijing'

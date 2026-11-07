@@ -10,19 +10,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from paper_author_searcher.collection.paper_collector import IdentityConfirmationRequired
 from paper_author_searcher.config import (
     DEFAULT_COLLECTION,
     DEFAULT_MATCHING,
     DEFAULT_STORAGE,
     StorageConfig,
 )
-from paper_author_searcher.diagnostic_codes import error_fields
 from paper_author_searcher.json_types import JSONObject
 from paper_author_searcher.jsonio import read_json, write_json
 from paper_author_searcher.matching import similarity_cache_statistics
 from paper_author_searcher.models import ProfessorQuery
-from paper_author_searcher.paper_collector import IdentityConfirmationRequired
-from paper_author_searcher.performance_diagnostics import workflow_outcomes
+from paper_author_searcher.quality.diagnostic_codes import error_fields
+from paper_author_searcher.quality.performance_diagnostics import workflow_outcomes
 from paper_author_searcher.status import RunStatus
 from paper_author_searcher.timings import HttpMeter, PhaseTimings, phase, recording
 

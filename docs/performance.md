@@ -5,7 +5,7 @@
 ## 完整检索
 
 ```bash
-python3 -m paper_author_searcher.workflow_cli \
+python3 -m paper_author_searcher.cli.search \
   --name 'Geoffrey Hinton' --university 'University of Toronto' \
   --research 'machine learning' --mode full --output-dir output/performance \
   --timeout 20 --retries 2
@@ -16,7 +16,7 @@ python3 -m paper_author_searcher.workflow_cli \
 可从 Collector 的 `papers.json` 继续，跳过重复论文检索：
 
 ```bash
-python3 -m paper_author_searcher.workflow_cli \
+python3 -m paper_author_searcher.cli.search \
   --input output/SEARCH_DIRECTORY/papers.json --mode full \
   --output-dir output/performance --timeout 20 --retries 2
 ```
@@ -32,7 +32,7 @@ python3 -m paper_author_searcher.workflow_cli \
 准备待审核参考文件的输入格式为 `{"pages": [{"url": "https://publisher.example/paper", "context": "independent bibliography source"}]}`：
 
 ```bash
-python3 -m paper_author_searcher.reference_import \
+python3 -m paper_author_searcher.collection.reference_import \
   --pages reference_pages.json --name 'Professor name' \
   --output reference.pending.json --timeout 20 --retries 2
 ```
@@ -44,7 +44,7 @@ python3 -m paper_author_searcher.reference_import \
 ## 离线指标与对比
 
 ```bash
-python3 -m paper_author_searcher.performance_cli \
+python3 -m paper_author_searcher.cli.performance \
   --collection output/SEARCH_DIRECTORY/papers.json \
   --ground-truth ground_truth.reviewed.json \
   --pdf-report output/SEARCH_DIRECTORY/pdf_urls.json \
@@ -92,7 +92,7 @@ PDF 和下载结果新增 `failure_reasons`，包括 `access_restricted`、`rate
 `candidate_diagnostics` 可分别抓取排名前两位未确认候选的元数据，用于分析遗漏：
 
 ```bash
-python3 -m paper_author_searcher.candidate_diagnostics \
+python3 -m paper_author_searcher.collection.candidate_diagnostics \
   --identity professor.ambiguous.json --output-dir candidate_diagnostics
 ```
 

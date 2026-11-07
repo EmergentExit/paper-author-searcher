@@ -6,12 +6,12 @@ from dataclasses import replace
 from pathlib import Path
 
 from paper_author_searcher.config import DEFAULT_PDF
-from paper_author_searcher.http import HttpClient, SourceError, URLProbe
-from paper_author_searcher.http_budget import BudgetedHttpClient, CostLedger
-from paper_author_searcher.http_cache import CachingHttpClient, cached_client
-from paper_author_searcher.http_decorators import HttpClientDecorator, PacedHttpClient, unwrap
-from paper_author_searcher.pacing import RequestPacer
-from paper_author_searcher.pdf_resource_requests import PublicResourceRequests
+from paper_author_searcher.fulltext.pdf_resource_requests import PublicResourceRequests
+from paper_author_searcher.transport.http import HttpClient, SourceError, URLProbe
+from paper_author_searcher.transport.http_budget import BudgetedHttpClient, CostLedger
+from paper_author_searcher.transport.http_cache import CachingHttpClient, cached_client
+from paper_author_searcher.transport.http_decorators import HttpClientDecorator, PacedHttpClient, unwrap
+from paper_author_searcher.transport.pacing import RequestPacer
 
 
 class RecordingClient(HttpClient):

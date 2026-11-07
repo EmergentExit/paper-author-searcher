@@ -3,8 +3,8 @@ import unittest
 from functools import partial
 
 from paper_author_searcher.concurrency import Outcome, attempt, in_order
-from paper_author_searcher.http import SourceError
 from paper_author_searcher.timings import PhaseTimings, phase, recording
+from paper_author_searcher.transport.http import SourceError
 
 
 class InOrderTests(unittest.TestCase):

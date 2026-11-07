@@ -5,10 +5,10 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from paper_author_searcher import ProfessorQuery as Q
+from paper_author_searcher.collection.cs_sources import ArxivAuthorSearch, OpenReviewProfiles
+from paper_author_searcher.collection.paper_collector import PaperCollector
 from paper_author_searcher.config import CSSourcesConfig
-from paper_author_searcher.cs_sources import ArxivAuthorSearch, OpenReviewProfiles
 from paper_author_searcher.models import PaperSourceResult, ProfessorProfile
-from paper_author_searcher.paper_collector import PaperCollector
 
 FEED = """<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
 <opensearch:totalResults>2</opensearch:totalResults>

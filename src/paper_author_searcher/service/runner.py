@@ -10,11 +10,11 @@ from typing import Any
 
 from paper_author_searcher.composition import RunOptions, ServiceContainer, llm_ledger_name
 from paper_author_searcher.config import AmbiguityPolicy
-from paper_author_searcher.http_budget import release_ledger
-from paper_author_searcher.http_deadline import SearchDeadline
 from paper_author_searcher.models import ProfessorQuery
 from paper_author_searcher.settings import Settings
 from paper_author_searcher.status import RunStatus
+from paper_author_searcher.transport.http_budget import release_ledger
+from paper_author_searcher.transport.http_deadline import SearchDeadline
 from paper_author_searcher.workflow import load_checkpoint
 
 from .model import Job, JobStatus
