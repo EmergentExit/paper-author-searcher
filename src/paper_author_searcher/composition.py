@@ -9,7 +9,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, fields, replace
 from functools import cached_property
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from .authorship_places import AuthorshipPlaces
 from .byline_disambiguation import BylineDisambiguator
@@ -21,13 +21,14 @@ from .curated_positions import PositionMatcher
 from .dblp_discovery import DblpProfileDiscovery
 from .dblp_dump import DblpDumpIndex
 from .homepage_citations import DocumentParser, HtmlCitationParser, PdfCitationParser
-from .http import HttpClient
+from .http import HttpClient, HttpTransport
 from .http_budget import CostLedger, DailyBudget, budgeted_client, shared_ledger
 from .http_cache import cached_client
 from .http_deadline import DeadlineHttpClient, SearchDeadline
 from .http_decorators import PacedHttpClient
 from .identity_anchors import AnchorFinder, ScholarlyAnchorFinder
 from .identity_discovery import (
+    DiscoveryStep,
     IdentityDiscovery,
     OrcidRegistrySearch,
     OrcidResearcherUrls,
@@ -41,9 +42,10 @@ from .orcid_affiliations import OrcidAffiliations
 from .pacing import Pacer, RequestPacer
 from .paper_collector import NameSearch, PaperCollector
 from .paper_ownership import PaperOwnershipValidator
-from .pdf_file_validation import PDFFileValidator
-from .pdf_front_page import ClaudeFrontPageReader, FrontPageValidator, LayoutFrontPageReader
-from .pdf_providers import WebSearchPDFProvider
+from .paper_providers import PaperProvider
+from .pdf_file_validation import FileValidator, PDFFileValidator
+from .pdf_front_page import ClaudeFrontPageReader, FrontPageReader, FrontPageValidator, LayoutFrontPageReader
+from .pdf_providers import PDFProvider, WebSearchPDFProvider
 from .pdf_public_pages import PublicPagePDFProvider
 from .pdf_resolver import PDFResolver
 from .pdf_resource_requests import PublicResourceRequests
@@ -51,6 +53,7 @@ from .pdf_validation import PDFURLValidator
 from .precision_guards import CommonNamePolicy, DepartmentMatcher, PrecisionGuard
 from .profile_links import ProfileLinkParser
 from .progress import ProgressReporter
+from .providers import AuthorProvider
 from .publication_extraction import (
     CachedJsonCompletion,
     ClaudeJsonCompletion,
@@ -65,8 +68,12 @@ from .settings import Settings
 from .source_catalog import IDENTITY_SOURCES, NAME_SEARCHES, PAPER_SOURCES, PDF_SOURCES, WEB_SEARCH, WORK_LOOKUPS
 from .timings import HttpMeter, TimedHttpClient
 from .venue_catalogs import CatalogIndexer, CatalogStore, catalog_sources, probe_fetch
-from .web_search import FallbackWebSearch
+from .web_search import FallbackWebSearch, WebSearch
 from .workflow import PaperSearchWorkflow
+
+if TYPE_CHECKING:
+    from .identity_adjudication import IdentityAdjudicator
+    from .pdf_downloader import PDFDownloader
 
 FULL_MODE = 'full'
 BYTES_PER_MEGABYTE = 1024 * 1024
@@ -133,7 +140,7 @@ class ServiceContainer:
         self,
         settings: Settings,
         options: RunOptions | None = None,
-        adjudicator_factory: Callable[[], Any] | None = None,
+        adjudicator_factory: 'Callable[[], IdentityAdjudicator] | None' = None,
         anchor_finder: AnchorFinder | None = None,
         transport_limits: TransportLimits | None = None,
     ) -> None:
@@ -158,7 +165,7 @@ class ServiceContainer:
         return HttpMeter()
 
     @cached_property
-    def http_client(self) -> Any:
+    def http_client(self) -> HttpTransport:
         """timing -> deadline -> cache -> budget -> pacing -> network: every request is timed by host; cached replays
         are free and never wait; real requests are priced and keep each host's interval; past the run's deadline
         nothing is asked at all."""
@@ -208,7 +215,7 @@ class ServiceContainer:
     # Identity ----------------------------------------------------------------------------------------------------
 
     @cached_property
-    def identity_providers(self) -> list[Any]:
+    def identity_providers(self) -> list[AuthorProvider]:
         return IDENTITY_SOURCES.create(self.settings.sources.identity_sources, self)
 
     @cached_property
@@ -286,7 +293,7 @@ class ServiceContainer:
             return IdentityDiscovery([])
         ranker = PageRanker(config, settings.matching)
         departments = DepartmentMatcher(settings.precision)
-        steps: list[Any] = []
+        steps: list[DiscoveryStep] = []
         profiles = next(
             (provider for provider in self.identity_providers if getattr(provider, 'discovers_profiles', False)), None
         )
@@ -312,7 +319,7 @@ class ServiceContainer:
         return IdentityDiscovery(steps)
 
     @cached_property
-    def web_search(self) -> Any:
+    def web_search(self) -> WebSearch | None:
         """The configured web search providers whose keys are set, in order; None when there is none.
 
         With more than one, a query falls through to the next when a provider fails or runs out of credit.
@@ -357,7 +364,7 @@ class ServiceContainer:
         return replace(config, **changes)
 
     @cached_property
-    def paper_providers(self) -> list[Any]:
+    def paper_providers(self) -> list[PaperProvider]:
         """One collector per enabled identity source that has a registered paper source."""
         return [
             PAPER_SOURCES.factory(provider.name)(self, provider)
@@ -475,7 +482,7 @@ class ServiceContainer:
         return PublicResourceRequests(self.http_client, self.pdf_config)
 
     @cached_property
-    def pdf_providers(self) -> list[Any]:
+    def pdf_providers(self) -> list[PDFProvider]:
         return PDF_SOURCES.create(self.pdf_config.sources, self)
 
     @cached_property
@@ -494,7 +501,7 @@ class ServiceContainer:
         )
 
     @cached_property
-    def pdf_fallbacks(self) -> list[Any]:
+    def pdf_fallbacks(self) -> list[PDFProvider]:
         if self.web_search is None or not self.pdf_config.web_search_maximum_papers:
             return []
         pages = PublicPagePDFProvider(self.resource_requests, self.pdf_config)
@@ -507,12 +514,12 @@ class ServiceContainer:
         return replace(self.settings.download, maximum_file_bytes=int(self.options.max_file_mb * BYTES_PER_MEGABYTE))
 
     @cached_property
-    def downloader(self) -> Any:
+    def downloader(self) -> 'PDFDownloader':
         from .pdf_downloader import PDFDownloader  # deferred: needs the optional "download" extra (pypdf)
 
         config = self.download_config
-        validator: Any = PDFFileValidator(config)
-        readers: list[Any] = []
+        validator: FileValidator = PDFFileValidator(config)
+        readers: list[FrontPageReader] = []
         if config.front_page_layouts:
             readers.append(LayoutFrontPageReader(config.front_page_layouts, config.front_page_title_lines, config))
         if self.front_page_reader is not None:
@@ -538,7 +545,7 @@ class ServiceContainer:
         )
 
 
-def _claude_adjudicator() -> Any:
+def _claude_adjudicator() -> 'IdentityAdjudicator':
     from .identity_adjudication import ClaudeIdentityAdjudicator  # deferred: optional "llm" extra
 
     return ClaudeIdentityAdjudicator()

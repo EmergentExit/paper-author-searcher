@@ -26,7 +26,8 @@ class SearchHit:
 
 
 class WebSearch(Protocol):
-    name: str
+    @property
+    def name(self) -> str: ...
 
     def search(self, query: str, count: int) -> list[SearchHit]: ...
 

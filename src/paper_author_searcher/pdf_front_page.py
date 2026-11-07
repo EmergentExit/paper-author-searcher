@@ -20,7 +20,7 @@ from .config import DEFAULT_DOWNLOAD, DEFAULT_EXTRACTION, ExtractionConfig
 from .http_budget import CostLedger
 from .logging_config import log_isolated_failure
 from .models import PDFFileValidation
-from .pdf_file_validation import NON_FULL_DOCUMENTS, content_identity, front_page_text, front_pages
+from .pdf_file_validation import NON_FULL_DOCUMENTS, FileValidator, content_identity, front_page_text, front_pages
 from .pdf_front_matter import front_matter
 from .publication_extraction import token_cost
 from .status import FormatStatus, IdentityStatus, PDFValidationStatus
@@ -169,7 +169,9 @@ class ClaudeFrontPageReader:
 class FrontPageValidator:
     """Decorates a PDF validator: a file it could not place is read by each reader in turn until the rules accept."""
 
-    def __init__(self, validator: Any, readers: Sequence[FrontPageReader], config: Any = DEFAULT_DOWNLOAD) -> None:
+    def __init__(
+        self, validator: FileValidator, readers: Sequence[FrontPageReader], config: Any = DEFAULT_DOWNLOAD
+    ) -> None:
         self.validator = validator
         self.readers = readers
         self.config = config
