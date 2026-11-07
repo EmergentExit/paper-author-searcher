@@ -90,15 +90,6 @@ module = ["paper_author_searcher.rpc.v1.*", "grpc", "grpc.*", "grpc_health.*", "
 ignore_missing_imports = true
 ignore_errors = true
 
-[[tool.mypy.overrides]]
-# Being restructured (resolver/anchor split); they are annotated as they are split.
-module = [
-    "paper_author_searcher.identity_anchors",
-    "paper_author_searcher.resolver",
-]
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-
 [tool.coverage.run]
 branch = true
 source = ["src/paper_author_searcher"]
