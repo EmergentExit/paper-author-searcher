@@ -6,11 +6,11 @@ from itertools import pairwise
 from unittest.mock import Mock
 
 from paper_author_searcher.config import DEFAULT_PDF
-from paper_author_searcher.http import URLProbe
+from paper_author_searcher.fulltext.pdf_resolver import PDFResolver
+from paper_author_searcher.fulltext.pdf_resource_requests import PublicResourceRequests
 from paper_author_searcher.models import PDFProviderResult
-from paper_author_searcher.pacing import RequestPacer
-from paper_author_searcher.pdf_resolver import PDFResolver
-from paper_author_searcher.pdf_resource_requests import PublicResourceRequests
+from paper_author_searcher.transport.http import URLProbe
+from paper_author_searcher.transport.pacing import RequestPacer
 
 
 class PacerTests(unittest.TestCase):

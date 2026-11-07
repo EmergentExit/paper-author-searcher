@@ -6,14 +6,14 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from paper_author_searcher.cli.pdf import main
 from paper_author_searcher.config import DEFAULT_PDF
-from paper_author_searcher.http import SourceError, URLProbe
+from paper_author_searcher.fulltext.pdf_providers import LandingPagePDFProvider, OpenAlexPDFProvider
+from paper_author_searcher.fulltext.pdf_resolver import PDFResolver
+from paper_author_searcher.fulltext.pdf_resource_requests import PublicResourceRequests
+from paper_author_searcher.fulltext.pdf_validation import PDFURLValidator
 from paper_author_searcher.models import PDFCandidate, PDFProviderResult
-from paper_author_searcher.pdf_cli import main
-from paper_author_searcher.pdf_providers import LandingPagePDFProvider, OpenAlexPDFProvider
-from paper_author_searcher.pdf_resolver import PDFResolver
-from paper_author_searcher.pdf_resource_requests import PublicResourceRequests
-from paper_author_searcher.pdf_validation import PDFURLValidator
+from paper_author_searcher.transport.http import SourceError, URLProbe
 
 
 def saved_collection():
@@ -275,7 +275,7 @@ class TransientRetryTests(unittest.TestCase):
         resolver = PDFResolver(
             sources or [provider()], PDFURLValidator(requests, config), requests, config, clock.sleep
         )
-        with patch('paper_author_searcher.pdf_resource_requests.time.monotonic', clock.monotonic):
+        with patch('paper_author_searcher.fulltext.pdf_resource_requests.time.monotonic', clock.monotonic):
             return resolver.resolve(saved_collection()), clock
 
     def test_a_link_that_timed_out_is_probed_again_after_its_host_cools_down(self):
@@ -335,7 +335,7 @@ class SourceRetryTests(unittest.TestCase):
         config = replace(DEFAULT_PDF, public_page_request_interval=0, **changes)
         requests = PublicResourceRequests(client or FlakyClient(), config)
         resolver = PDFResolver([source], PDFURLValidator(requests, config), requests, config, clock.sleep)
-        with patch('paper_author_searcher.pdf_resource_requests.time.monotonic', clock.monotonic):
+        with patch('paper_author_searcher.fulltext.pdf_resource_requests.time.monotonic', clock.monotonic):
             return resolver.resolve(saved_collection()), clock
 
     def test_a_throttled_source_is_asked_again_and_its_failure_forgotten(self):

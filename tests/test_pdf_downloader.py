@@ -7,12 +7,12 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from paper_author_searcher.cli.download import main
 from paper_author_searcher.config import DEFAULT_DOWNLOAD
-from paper_author_searcher.download_cli import main
-from paper_author_searcher.http import DownloadReceipt, SourceError
+from paper_author_searcher.fulltext.pdf_downloader import PDFDownloader, paper_filename, paper_key
+from paper_author_searcher.fulltext.pdf_file_validation import PDFFileValidator
 from paper_author_searcher.models import PDFFileValidation
-from paper_author_searcher.pdf_downloader import PDFDownloader, paper_filename, paper_key
-from paper_author_searcher.pdf_file_validation import PDFFileValidator
+from paper_author_searcher.transport.http import DownloadReceipt, SourceError
 from pdf_fixtures import HAS_PYPDF, make_pdf
 
 
@@ -545,7 +545,7 @@ class DownloadCLITests(unittest.TestCase):
             source.write_text(json.dumps({'papers': [target()]}))
             downloader = PDFDownloader(fake_client(), fake_validator())
             with (
-                patch('paper_author_searcher.pdf_downloader.PDFDownloader', return_value=downloader),
+                patch('paper_author_searcher.fulltext.pdf_downloader.PDFDownloader', return_value=downloader),
                 patch('builtins.print'),
             ):
                 self.assertEqual(main(['--input', str(source), '--output-dir', str(output), '--max-downloads', '1']), 0)
@@ -571,7 +571,7 @@ class DownloadCLITests(unittest.TestCase):
             source.write_text(json.dumps({'papers': [target()]}))
             downloader = PDFDownloader(fake_client(), fake_validator('needs_review'))
             with (
-                patch('paper_author_searcher.pdf_downloader.PDFDownloader', return_value=downloader),
+                patch('paper_author_searcher.fulltext.pdf_downloader.PDFDownloader', return_value=downloader),
                 patch('builtins.print'),
             ):
                 code = main(['--input', str(source), '--output-dir', str(Path(directory) / 'downloads')])

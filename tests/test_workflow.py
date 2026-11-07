@@ -9,19 +9,19 @@ from copy import deepcopy
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from paper_author_searcher.cli import main as legacy_main
+from paper_author_searcher.cli.resolve import main as legacy_main
+from paper_author_searcher.cli.search import main
+from paper_author_searcher.collection.paper_collector import PaperCollector
+from paper_author_searcher.collection.paper_views import full_paper_metadata
 from paper_author_searcher.config import StorageConfig
-from paper_author_searcher.http import SourceError
+from paper_author_searcher.fulltext.pdf_downloader import PDFDownloader
+from paper_author_searcher.fulltext.pdf_file_validation import PDFFileValidator
+from paper_author_searcher.fulltext.pdf_resolver import PDFResolver
 from paper_author_searcher.jsonio import read_json, write_json
 from paper_author_searcher.models import AuthorCandidate, PDFCandidate, PDFProviderResult, ProfessorQuery
-from paper_author_searcher.paper_collector import PaperCollector
-from paper_author_searcher.paper_views import full_paper_metadata
-from paper_author_searcher.pdf_downloader import PDFDownloader
-from paper_author_searcher.pdf_file_validation import PDFFileValidator
-from paper_author_searcher.pdf_resolver import PDFResolver
-from paper_author_searcher.resolver import ProfessorResolver
+from paper_author_searcher.resolution.resolver import ProfessorResolver
+from paper_author_searcher.transport.http import SourceError
 from paper_author_searcher.workflow import PaperSearchWorkflow, WorkflowStage, load_checkpoint, metadata_audit
-from paper_author_searcher.workflow_cli import main
 from pdf_fixtures import HAS_PYPDF, make_pdf
 from test_paper_collector import paper
 from test_pdf_downloader import fake_client, fake_validator
@@ -418,7 +418,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_cli_and_existing_cli_use_same_workflow(self):
         for entrypoint in (main, legacy_main):
-            with patch('paper_author_searcher.workflow_cli.build_workflow', return_value=self.workflow):
+            with patch('paper_author_searcher.cli.search.build_workflow', return_value=self.workflow):
                 buffer = io.StringIO()
                 with redirect_stdout(buffer):
                     code = entrypoint(

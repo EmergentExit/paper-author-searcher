@@ -8,8 +8,8 @@ from types import SimpleNamespace
 
 from paper_author_searcher.composition import RunOptions, ServiceContainer
 from paper_author_searcher.config import DEFAULT_EXTRACTION
-from paper_author_searcher.homepage_citations import HomepageCitation, HtmlCitationParser
-from paper_author_searcher.publication_extraction import (
+from paper_author_searcher.resolution.homepage_citations import HomepageCitation, HtmlCitationParser
+from paper_author_searcher.resolution.publication_extraction import (
     PUBLICATION_SCHEMA,
     SYSTEM_PROMPT,
     CachedJsonCompletion,

@@ -6,7 +6,12 @@ from subprocess import TimeoutExpired
 from unittest.mock import patch
 
 from paper_author_searcher.config import DEFAULT_DOWNLOAD
-from paper_author_searcher.pdf_file_validation import PDFFileValidator, content_identity, inspect_pdf, validation_target
+from paper_author_searcher.fulltext.pdf_file_validation import (
+    PDFFileValidator,
+    content_identity,
+    inspect_pdf,
+    validation_target,
+)
 from pdf_fixtures import HAS_PYPDF, make_pdf
 
 
@@ -234,7 +239,9 @@ class PDFParsingTests(unittest.TestCase):
         self.assertEqual(result.identity_status, 'verified')
 
     def test_worker_timeout_is_not_format_success(self):
-        with patch('paper_author_searcher.pdf_file_validation.subprocess.run', side_effect=TimeoutExpired('worker', 1)):
+        with patch(
+            'paper_author_searcher.fulltext.pdf_file_validation.subprocess.run', side_effect=TimeoutExpired('worker', 1)
+        ):
             result = PDFFileValidator().validate(self.path, target())
         self.assertEqual(result.format_status, 'unverified')
         self.assertEqual(result.identity_status, 'not_checked')

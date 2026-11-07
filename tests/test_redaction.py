@@ -3,10 +3,10 @@ import logging
 import unittest
 from urllib.parse import quote
 
-from paper_author_searcher.http import SourceError
 from paper_author_searcher.logging_config import PACKAGE_LOGGER, configure_logging
 from paper_author_searcher.redaction import MASK, redact, register_secrets
 from paper_author_searcher.settings import Settings
+from paper_author_searcher.transport.http import SourceError
 
 KEY = 'oa-secret-key-12345'
 EMAIL = 'owner+lab@example.org'

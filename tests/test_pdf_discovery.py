@@ -5,18 +5,22 @@ import unittest
 from dataclasses import replace
 from unittest.mock import Mock, patch
 
+from paper_author_searcher.cli.pdf import main as pdf_main
+from paper_author_searcher.cli.search import main as workflow_main
 from paper_author_searcher.config import DEFAULT_PDF
-from paper_author_searcher.http import SourceError, URLProbe
-from paper_author_searcher.pdf_cli import main as pdf_main
-from paper_author_searcher.pdf_crossref import CrossrefPDFProvider
-from paper_author_searcher.pdf_identity import arxiv_ids
-from paper_author_searcher.pdf_providers import SemanticScholarPDFProvider, UnpaywallPDFProvider, openalex_landing_pages
-from paper_author_searcher.pdf_public_pages import PublicPagePDFProvider, secure_page_url
-from paper_author_searcher.pdf_resolver import PDFResolver
-from paper_author_searcher.pdf_source_requests import SemanticScholarRequests
-from paper_author_searcher.performance_diagnostics import pdf_failure_reasons
+from paper_author_searcher.fulltext.pdf_crossref import CrossrefPDFProvider
+from paper_author_searcher.fulltext.pdf_identity import arxiv_ids
+from paper_author_searcher.fulltext.pdf_providers import (
+    SemanticScholarPDFProvider,
+    UnpaywallPDFProvider,
+    openalex_landing_pages,
+)
+from paper_author_searcher.fulltext.pdf_public_pages import PublicPagePDFProvider, secure_page_url
+from paper_author_searcher.fulltext.pdf_resolver import PDFResolver
+from paper_author_searcher.fulltext.pdf_source_requests import SemanticScholarRequests
+from paper_author_searcher.quality.performance_diagnostics import pdf_failure_reasons
 from paper_author_searcher.settings import Credentials, validate_contact_email
-from paper_author_searcher.workflow_cli import main as workflow_main
+from paper_author_searcher.transport.http import SourceError, URLProbe
 
 
 def saved_paper(doi='10.1234/method'):
@@ -112,7 +116,7 @@ class SemanticRequestTests(unittest.TestCase):
         client = Mock()
         client.post_json.side_effect = SourceError('HTTP 429', status_code=429, retry_after=120)
         gateway = self.gateway(client)
-        with patch('paper_author_searcher.pdf_source_requests.time.monotonic', return_value=10):
+        with patch('paper_author_searcher.fulltext.pdf_source_requests.time.monotonic', return_value=10):
             gateway.prefetch(['one', 'two'])
             for value in ('one', 'two'):
                 with self.assertRaises(SourceError):
@@ -125,10 +129,10 @@ class SemanticRequestTests(unittest.TestCase):
         client = Mock()
         client.get.side_effect = [SourceError('timed out', error_type='timeout'), semantic_work()]
         gateway = self.gateway(client)
-        with patch('paper_author_searcher.pdf_source_requests.time.monotonic', return_value=10):
+        with patch('paper_author_searcher.fulltext.pdf_source_requests.time.monotonic', return_value=10):
             with self.assertRaises(SourceError):
                 gateway.work('one')
-        with patch('paper_author_searcher.pdf_source_requests.time.monotonic', return_value=100):
+        with patch('paper_author_searcher.fulltext.pdf_source_requests.time.monotonic', return_value=100):
             self.assertEqual(gateway.work('one')['paperId'], 'synthetic-id')
 
     def test_html_interstitial_cools_source_instead_of_repeating_batch_and_get(self):
@@ -228,7 +232,7 @@ class ContactTests(unittest.TestCase):
         with (
             patch.dict('os.environ', {}, clear=True),
             patch('sys.stderr'),
-            patch('paper_author_searcher.workflow_cli.build_workflow') as workflow,
+            patch('paper_author_searcher.cli.search.build_workflow') as workflow,
         ):
             with self.assertRaises(SystemExit) as raised:
                 workflow_main(['--input', 'missing.json', '--mode', 'full', '--require-unpaywall'])

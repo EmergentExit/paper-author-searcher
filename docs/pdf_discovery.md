@@ -35,7 +35,7 @@ export UNPAYWALL_EMAIL
 从保存的完整论文归档读取，继续按原顺序处理前 100 篇 ownership verified。不要使用包含新论文排序或改变归属状态的归档。输出到新的运行目录；PDF 不设 25 篇下载上限，以免遮蔽新增链接的内容验证结果。
 
 ```bash
-SSL_CERT_FILE=/etc/ssl/cert.pem .venv/bin/python -m paper_author_searcher.workflow_cli \
+SSL_CERT_FILE=/etc/ssl/cert.pem .venv/bin/python -m paper_author_searcher.cli.search \
   --input reports/performance/andrew_ng.ownership_scope.reviewed.json \
   --mode full --output-dir output/performance/source_discovery \
   --max-pdf-papers 100 --require-unpaywall --timeout 6 --retries 0
@@ -51,7 +51,7 @@ SSL_CERT_FILE=/etc/ssl/cert.pem .venv/bin/python -m paper_author_searcher.workfl
 
 ```bash
 AFTER_RUN='output/performance/source_discovery/替换为实际新运行目录'
-.venv/bin/python -m paper_author_searcher.pdf_discovery_comparison \
+.venv/bin/python -m paper_author_searcher.quality.pdf_discovery_comparison \
   --before output/performance/andrew_ng_confirmed/search_Andrew_Ng_20261011T154644Z_80a277855670 \
   --before output/performance/andrew_ng_catalog/search_Andrew_Ng_20261011T160213Z_6ada4b9dd1be \
   --after "$AFTER_RUN" \

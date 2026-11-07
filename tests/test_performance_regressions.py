@@ -8,13 +8,14 @@ import unittest
 from unittest.mock import patch
 
 from paper_author_searcher import AuthorCandidate as C
-from paper_author_searcher import identity, paper_deduplication
 from paper_author_searcher.benchmark.runner import window_archive
 from paper_author_searcher.benchmark.scoring import scope_to_window
-from paper_author_searcher.identity_grouping import group_candidates
+from paper_author_searcher.collection import paper_deduplication
+from paper_author_searcher.collection.paper_deduplication import deduplicate_papers
 from paper_author_searcher.models import PaperRecord
-from paper_author_searcher.paper_deduplication import deduplicate_papers
-from paper_author_searcher.resolver import ProfessorResolver
+from paper_author_searcher.resolution import identity
+from paper_author_searcher.resolution.identity_grouping import group_candidates
+from paper_author_searcher.resolution.resolver import ProfessorResolver
 
 SURNAMES = ['Lin', 'Okafor', 'Ruiz', 'Novak', 'Osei', 'Kim', 'Mora', 'Wei', 'Patel', 'Silva']
 
@@ -38,7 +39,7 @@ class GroupingCostTests(unittest.TestCase):
         ]
         resolver = ProfessorResolver([Provider(candidates)])
         with patch(
-            'paper_author_searcher.identity_grouping.compare_identity', wraps=identity.compare_identity
+            'paper_author_searcher.resolution.identity_grouping.compare_identity', wraps=identity.compare_identity
         ) as compare:
             groups = group_candidates(sorted(candidates, key=lambda c: (c.source, c.author_id)), resolver.config)
         # Only same-name profiles are compared in full: at most C(5, 2) per surname, never across surnames.

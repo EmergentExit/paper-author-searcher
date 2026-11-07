@@ -5,11 +5,11 @@ from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
+from paper_author_searcher.collection.paper_collector import IdentityConfirmationRequired
 from paper_author_searcher.config import AmbiguityPolicy
 from paper_author_searcher.json_types import JSONObject
 from paper_author_searcher.jsonio import read_json
 from paper_author_searcher.models import ProfessorProfile, ResolutionResult
-from paper_author_searcher.paper_collector import IdentityConfirmationRequired
 from paper_author_searcher.status import ResolutionStatus, UniversityStatus
 
 

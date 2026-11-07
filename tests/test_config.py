@@ -7,10 +7,10 @@ from unittest.mock import patch
 from paper_author_searcher import AuthorCandidate, ProfessorQuery, ProfessorResolver
 from paper_author_searcher.composition import ServiceContainer
 from paper_author_searcher.config import HttpConfig, MatchingConfig, SourceConfig
-from paper_author_searcher.http import HttpClient, SourceError
-from paper_author_searcher.identity import linked
-from paper_author_searcher.providers import DBLPProvider, OpenAlexProvider, SemanticScholarProvider
+from paper_author_searcher.resolution.identity import linked
+from paper_author_searcher.resolution.providers import DBLPProvider, OpenAlexProvider, SemanticScholarProvider
 from paper_author_searcher.settings import Settings
+from paper_author_searcher.transport.http import HttpClient, SourceError
 from test_http import Response
 from test_providers import Client
 from test_resolver import Provider
@@ -62,7 +62,7 @@ class ConfigurationTests(unittest.TestCase):
     def test_http_response_limit_is_injectable(self):
         config = replace(HttpConfig(), response_limit=2)
         response = Response(b'{"a":1}', 'application/json')
-        with patch('paper_author_searcher.http_transport.KeepAliveTransport.open', return_value=response):
+        with patch('paper_author_searcher.transport.http_transport.KeepAliveTransport.open', return_value=response):
             with self.assertRaisesRegex(SourceError, 'size limit'):
                 HttpClient(config=config).get('https://example.test')
 

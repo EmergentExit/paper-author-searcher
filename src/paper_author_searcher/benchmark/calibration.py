@@ -18,7 +18,7 @@ from typing import Any
 
 from paper_author_searcher.config import AmbiguityPolicy, MatchingConfig
 from paper_author_searcher.models import AuthorCandidate, ProfessorQuery
-from paper_author_searcher.resolver import ProfessorResolver
+from paper_author_searcher.resolution.resolver import ProfessorResolver
 from paper_author_searcher.status import ResolutionStatus, UniversityStatus
 from paper_author_searcher.workflow import contender_profile
 

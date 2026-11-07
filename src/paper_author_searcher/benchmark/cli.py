@@ -10,13 +10,13 @@ from pathlib import Path
 
 from paper_author_searcher.composition import RunOptions, ServiceContainer
 from paper_author_searcher.config import MatchingConfig
-from paper_author_searcher.http import HttpClient, SourceError
-from paper_author_searcher.http_cache import CacheMode
 from paper_author_searcher.jsonio import read_json, write_json
 from paper_author_searcher.logging_config import add_logging_arguments, configure_from_arguments, log_isolated_failure
-from paper_author_searcher.resolver import ProfessorResolver
+from paper_author_searcher.resolution.resolver import ProfessorResolver
 from paper_author_searcher.settings import load_settings
 from paper_author_searcher.status import AnnotationState, OwnershipStatus, RunStatus, TruthState
+from paper_author_searcher.transport.http import HttpClient, SourceError
+from paper_author_searcher.transport.http_cache import CacheMode
 
 from .gate import ReleaseGate
 from .report import markdown_report
@@ -286,7 +286,7 @@ def command_timings(args: argparse.Namespace) -> int:
 
 
 def command_diagnose(args: argparse.Namespace) -> int:
-    from paper_author_searcher.http_budget import ledger_summary
+    from paper_author_searcher.transport.http_budget import ledger_summary
 
     from .identity_diagnosis import IdentityDiagnoser, WorkLister, markdown
 

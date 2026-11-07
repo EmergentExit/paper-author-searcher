@@ -7,13 +7,13 @@ from unittest.mock import Mock
 
 from paper_author_searcher.composition import RunOptions, ServiceContainer
 from paper_author_searcher.config import DEFAULT_PDF
-from paper_author_searcher.http import SourceError
-from paper_author_searcher.http_cache import CachingHttpClient
-from paper_author_searcher.http_deadline import DeadlineHttpClient, SearchDeadline, TimeLimitReached
+from paper_author_searcher.fulltext.pdf_resolver import PDFResolver
 from paper_author_searcher.models import PDFProviderResult
-from paper_author_searcher.pdf_resolver import PDFResolver
 from paper_author_searcher.settings import Settings
 from paper_author_searcher.status import OwnershipStatus, ProviderStatus
+from paper_author_searcher.transport.http import SourceError
+from paper_author_searcher.transport.http_cache import CachingHttpClient
+from paper_author_searcher.transport.http_deadline import DeadlineHttpClient, SearchDeadline, TimeLimitReached
 
 URL = 'https://api.example.org/works'
 
