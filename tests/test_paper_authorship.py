@@ -413,7 +413,7 @@ class OwnershipIdentityTests(unittest.TestCase):
     def test_coauthor_limit_is_configurable(self):
         item = replace(record(), authors=['Alex Morgan', 'Jane Smith', 'John Green'], author_details=[])
         validator = PaperOwnershipValidator(OwnershipConfig(maximum_coauthor_authors=2))
-        self.assertFalse(validator._coauthor_eligible(item, profile()))
+        self.assertFalse(validator.facts(profile()).coauthor_eligible(item))
 
 
 class AuthorshipPersistenceTests(unittest.TestCase):

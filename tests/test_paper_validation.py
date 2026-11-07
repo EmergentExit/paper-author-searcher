@@ -13,8 +13,10 @@ from paper_author_searcher.models import (
     PaperSourceResult,
     ProfessorProfile,
 )
+from paper_author_searcher.ownership import OwnershipContext
+from paper_author_searcher.ownership.passes import NamesakeGroups
 from paper_author_searcher.paper_deduplication import deduplicate_papers
-from paper_author_searcher.paper_ownership import PaperOwnershipValidator, abbreviated, record_fields
+from paper_author_searcher.paper_ownership import PaperOwnershipValidator, abbreviated, aggregate, record_fields
 from paper_author_searcher.paper_reanalysis import reanalyze_saved_result
 from paper_author_searcher.paper_types import classify_record
 from paper_author_searcher.status import AnchorKind, OwnershipStatus
@@ -164,17 +166,19 @@ class NamesakeGroupTests(unittest.TestCase):
         for paper in papers:
             for record in paper.records:
                 record.ownership_status = OwnershipStatus.VERIFIED
-            validator._aggregate(paper)
+            aggregate(paper)
         main = deduplicate_papers([self.paper('Main', ('Jane Smith', 'Li Wei'))])
         for record in main[0].records:
             record.ownership_status = OwnershipStatus.VERIFIED
-        validator._aggregate(main[0])
+        aggregate(main[0])
         main.extend(deduplicate_papers([self.paper('Main again', ('Jane Smith',))]))
         for record in main[1].records:
             record.ownership_status = OwnershipStatus.VERIFIED
-        validator._aggregate(main[1])
+        aggregate(main[1])
         target = replace(profile(), orcid=None, author_ids={'openalex': 'A1'}, author_id_aliases={'openalex': ['A1']})
-        validator._hold_namesake_groups([*main, *papers], target)
+        NamesakeGroups(validator.config, validator.places).apply(
+            [*main, *papers], OwnershipContext(validator.facts(target))
+        )
         self.assertEqual(papers[0].ownership_status, OwnershipStatus.NEEDS_REVIEW)
         self.assertEqual(main[0].ownership_status, OwnershipStatus.VERIFIED)
 
@@ -928,4 +932,4 @@ class ClassificationAndStatisticsTests(unittest.TestCase):
     def test_target_initial_is_not_counted_as_a_coauthor(self):
         item = replace(record(), authors=['A. Morgan', 'Jane Smith'])
         validator = PaperOwnershipValidator()
-        self.assertEqual(validator._coauthors(item, profile()), {'jane smith'})
+        self.assertEqual(validator.facts(profile()).coauthors(item), {'jane smith'})
