@@ -7,8 +7,8 @@ from paper_author_searcher import AuthorCandidate as C
 from paper_author_searcher import ProfessorQuery as Q
 from paper_author_searcher import ProfessorResolver
 from paper_author_searcher.config import MatchingConfig
-from paper_author_searcher.identity import compare_identity, shared_works
 from paper_author_searcher.matching import identity_work
+from paper_author_searcher.resolution.identity import compare_identity, shared_works
 
 SCHOOL = ['Example University']
 LAB = ['Ana Ruiz', 'Ben Okafor', 'Chen Wei', 'Dana Kim', 'Eli Novak', 'Fay Osei', 'Gus Mora']

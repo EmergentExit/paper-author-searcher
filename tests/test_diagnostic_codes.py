@@ -3,10 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from paper_author_searcher.diagnostic_codes import ErrorCategory, PdfFailureReason, error_category, error_fields
-from paper_author_searcher.http import SourceError
 from paper_author_searcher.models import ProfessorQuery
-from paper_author_searcher.performance_diagnostics import pdf_failure_reasons, workflow_outcomes
+from paper_author_searcher.quality.diagnostic_codes import ErrorCategory, PdfFailureReason, error_category, error_fields
+from paper_author_searcher.quality.performance_diagnostics import pdf_failure_reasons, workflow_outcomes
+from paper_author_searcher.transport.http import SourceError
 from paper_author_searcher.workflow import PaperSearchWorkflow
 from paper_author_searcher.workflow.stages import WorkflowStage
 

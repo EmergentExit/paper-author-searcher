@@ -2,9 +2,12 @@
 
 import logging
 
+from .collection.paper_collector import PaperCollector
+from .collection.paper_ownership import PaperOwnershipValidator
 from .config import CollectionConfig, DownloadConfig, HttpConfig, MatchingConfig, PDFConfig, SourceConfig
-from .evaluation import Evaluator
-from .evaluation_matching import GroundTruth
+from .fulltext.pdf_downloader import PDFDownloader
+from .fulltext.pdf_file_validation import PDFFileValidator
+from .fulltext.pdf_resolver import PDFResolver
 from .models import (
     AuthorCandidate,
     Paper,
@@ -20,13 +23,10 @@ from .models import (
     ProfessorQuery,
     ResolutionResult,
 )
-from .paper_collector import PaperCollector
-from .paper_ownership import PaperOwnershipValidator
-from .pdf_downloader import PDFDownloader
-from .pdf_file_validation import PDFFileValidator
-from .pdf_resolver import PDFResolver
-from .performance_evaluation import PerformanceEvaluator, compare_performance
-from .resolver import ProfessorResolver
+from .quality.evaluation import Evaluator
+from .quality.evaluation_matching import GroundTruth
+from .quality.performance_evaluation import PerformanceEvaluator, compare_performance
+from .resolution.resolver import ProfessorResolver
 from .workflow import PaperSearchWorkflow
 
 # Library logging stays silent until an application configures it (see logging_config).

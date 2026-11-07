@@ -1,10 +1,10 @@
 import unittest
 
 from paper_author_searcher.config import DEFAULT_DISCOVERY
-from paper_author_searcher.curated_positions import PositionMatcher
-from paper_author_searcher.dblp_discovery import DblpProfileDiscovery
-from paper_author_searcher.identity_discovery import Discovery, PageRanker
 from paper_author_searcher.models import AuthorCandidate, CuratedPosition, ProfessorQuery
+from paper_author_searcher.resolution.curated_positions import PositionMatcher
+from paper_author_searcher.resolution.dblp_discovery import DblpProfileDiscovery
+from paper_author_searcher.resolution.identity_discovery import Discovery, PageRanker
 
 QUERY = ProfessorQuery('Yang Liu', 'Tsinghua University', department='Computer Science and Technology')
 HOME = CuratedPosition('dblp', ('Tsinghua University',), ('department of computer science and technology',), True)

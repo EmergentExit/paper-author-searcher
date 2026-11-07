@@ -5,16 +5,16 @@ import unittest
 from dataclasses import asdict, replace
 from unittest.mock import Mock
 
-from paper_author_searcher.cli import _refresh_collection
+from paper_author_searcher.cli.resolve import _refresh_collection
+from paper_author_searcher.collection.paper_collector import PaperCollector
+from paper_author_searcher.collection.paper_deduplication import deduplicate_papers
+from paper_author_searcher.collection.paper_ownership import PaperOwnershipValidator
+from paper_author_searcher.collection.paper_providers import OpenAlexPaperProvider, SemanticScholarPaperProvider
+from paper_author_searcher.collection.paper_reanalysis import saved_collection_profile
 from paper_author_searcher.config import OwnershipConfig
-from paper_author_searcher.http import SourceError
 from paper_author_searcher.models import PaperCollectionResult, PaperSourceResult
-from paper_author_searcher.paper_collector import PaperCollector
-from paper_author_searcher.paper_deduplication import deduplicate_papers
-from paper_author_searcher.paper_ownership import PaperOwnershipValidator
-from paper_author_searcher.paper_providers import OpenAlexPaperProvider, SemanticScholarPaperProvider
-from paper_author_searcher.paper_reanalysis import saved_collection_profile
-from paper_author_searcher.providers import OpenAlexProvider, SemanticScholarProvider
+from paper_author_searcher.resolution.providers import OpenAlexProvider, SemanticScholarProvider
+from paper_author_searcher.transport.http import SourceError
 from test_paper_collector import openalex_work
 from test_paper_validation import profile, record, validate
 

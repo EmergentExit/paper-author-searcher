@@ -11,21 +11,21 @@ from pathlib import Path
 from unittest.mock import patch
 
 from paper_author_searcher import ProfessorQuery, ProfessorResolver
-from paper_author_searcher.cli import main
-from paper_author_searcher.config import CollectionConfig
-from paper_author_searcher.http import SourceError
-from paper_author_searcher.models import AuthorCandidate, PaperRecord, PaperSourceResult
-from paper_author_searcher.paper_collector import (
+from paper_author_searcher.cli.resolve import main
+from paper_author_searcher.collection.paper_collector import (
     IdentityConfirmationRequired,
     PaperCollector,
     deduplicate_papers,
 )
-from paper_author_searcher.paper_providers import (
+from paper_author_searcher.collection.paper_providers import (
     DBLPPaperProvider,
     OpenAlexPaperProvider,
     SemanticScholarPaperProvider,
 )
-from paper_author_searcher.providers import DBLPProvider, OpenAlexProvider, SemanticScholarProvider
+from paper_author_searcher.config import CollectionConfig
+from paper_author_searcher.models import AuthorCandidate, PaperRecord, PaperSourceResult
+from paper_author_searcher.resolution.providers import DBLPProvider, OpenAlexProvider, SemanticScholarProvider
+from paper_author_searcher.transport.http import SourceError
 from test_resolver import Provider
 
 

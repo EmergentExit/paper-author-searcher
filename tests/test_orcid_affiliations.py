@@ -1,7 +1,7 @@
 import unittest
 
 from paper_author_searcher.models import CareerPosition, CuratedPosition
-from paper_author_searcher.orcid_affiliations import OrcidAffiliations
+from paper_author_searcher.resolution.orcid_affiliations import OrcidAffiliations
 
 
 class Client:

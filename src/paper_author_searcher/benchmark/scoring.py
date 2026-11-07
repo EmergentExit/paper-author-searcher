@@ -7,9 +7,9 @@ from functools import cache
 from pathlib import Path
 from typing import Any, Protocol
 
-from paper_author_searcher.evaluation_matching import GroundTruth, GroundTruthMatcher
 from paper_author_searcher.jsonio import read_json
-from paper_author_searcher.performance_evaluation import PerformanceEvaluator
+from paper_author_searcher.quality.evaluation_matching import GroundTruth, GroundTruthMatcher
+from paper_author_searcher.quality.performance_evaluation import PerformanceEvaluator
 from paper_author_searcher.status import AnnotationState, TruthState
 
 from .metrics import BenchmarkMetric, MetricInput, benchmark_metrics

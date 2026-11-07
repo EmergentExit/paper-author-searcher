@@ -7,9 +7,9 @@ Factories receive the ``ServiceContainer``, so they draw clients, settings and c
 
 from typing import TYPE_CHECKING, TypeVar
 
-from .cs_sources import ArxivAuthorSearch
-from .dblp_dump import DblpDumpClient, DblpWorkLookup
-from .listed_works import (
+from .collection.cs_sources import ArxivAuthorSearch
+from .collection.dblp_dump import DblpDumpClient, DblpWorkLookup
+from .collection.listed_works import (
     ArxivWorkLookup,
     AuthorMatcher,
     CrossrefWorkLookup,
@@ -17,18 +17,25 @@ from .listed_works import (
     SemanticScholarWorkLookup,
     WorkLookup,
 )
-from .name_searches import (
+from .collection.name_searches import (
     CoreWorkLookup,
     CrossrefAuthorSearch,
     EuropePmcAuthorSearch,
     EuropePmcWorkLookup,
     OpenAlexSiblingSearch,
 )
-from .paper_collector import NameSearch
-from .paper_providers import DBLPPaperProvider, OpenAlexPaperProvider, PaperProvider, SemanticScholarPaperProvider
-from .pdf_catalogs import JournalCatalogPDFProvider
-from .pdf_crossref import CrossrefPDFProvider
-from .pdf_providers import (
+from .collection.paper_collector import NameSearch
+from .collection.paper_providers import (
+    DBLPPaperProvider,
+    OpenAlexPaperProvider,
+    PaperProvider,
+    SemanticScholarPaperProvider,
+)
+from .collection.precision_guards import DepartmentMatcher
+from .collection.venue_catalogs import CatalogWorkLookup, RepositoryNameSearch
+from .fulltext.pdf_catalogs import JournalCatalogPDFProvider
+from .fulltext.pdf_crossref import CrossrefPDFProvider
+from .fulltext.pdf_providers import (
     ArxivPDFProvider,
     EuropePMCPDFProvider,
     ExistingPDFProvider,
@@ -40,12 +47,10 @@ from .pdf_providers import (
     SemanticScholarPDFProvider,
     UnpaywallPDFProvider,
 )
-from .pdf_public_pages import PublicPagePDFProvider
-from .precision_guards import DepartmentMatcher
-from .providers import AuthorProvider, DBLPProvider, OpenAlexProvider, SemanticScholarProvider
+from .fulltext.pdf_public_pages import PublicPagePDFProvider
 from .registry import Registry
-from .venue_catalogs import CatalogWorkLookup, RepositoryNameSearch
-from .web_search import BraveSearch, ExaSearch, TavilySearch, WebSearch
+from .resolution.providers import AuthorProvider, DBLPProvider, OpenAlexProvider, SemanticScholarProvider
+from .transport.web_search import BraveSearch, ExaSearch, TavilySearch, WebSearch
 
 if TYPE_CHECKING:
     from .composition import ServiceContainer

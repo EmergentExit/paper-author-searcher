@@ -5,14 +5,14 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from paper_author_searcher.config import DEFAULT_PDF
-from paper_author_searcher.http import SourceError
+from paper_author_searcher.fulltext.pdf_front_matter import title_in_region
+from paper_author_searcher.fulltext.pdf_providers import HomepagePDFProvider, WebSearchPDFProvider
+from paper_author_searcher.fulltext.pdf_resolver import PDFResolver
 from paper_author_searcher.matching import normalize, normalize_title
 from paper_author_searcher.models import PDFCandidate, PDFProviderResult
-from paper_author_searcher.pdf_front_matter import title_in_region
-from paper_author_searcher.pdf_providers import HomepagePDFProvider, WebSearchPDFProvider
-from paper_author_searcher.pdf_resolver import PDFResolver
 from paper_author_searcher.status import WEB_SEARCH_OFF, IdentityStatus, ProviderStatus
-from paper_author_searcher.web_search import FallbackWebSearch, SearchHit
+from paper_author_searcher.transport.http import SourceError
+from paper_author_searcher.transport.web_search import FallbackWebSearch, SearchHit
 from paper_author_searcher.workflow.stages import PDFDiscoveryStage
 
 PAPER = {'title': 'A study of many things', 'authors': ['Ada Lovelace', 'Alan Turing'], 'ownership_status': 'verified'}

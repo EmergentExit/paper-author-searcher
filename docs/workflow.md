@@ -9,7 +9,7 @@ python3 -m pip install -e '.[download]'
 A live search uses the original resolver, paginated providers, deduplicator, ownership validator, PDF URL resolver and downloader. Each search creates a separate directory. The original stage CLIs remain available.
 
 ```bash
-python3 -m paper_author_searcher.cli \
+python3 -m paper_author_searcher.cli.resolve \
   --mode full \
   --name 'Geoffrey Hinton' \
   --university 'University of Toronto' \
@@ -38,7 +38,7 @@ An ambiguous or unconfirmed identity stops before collection. The terminal shows
 Continue with an explicitly chosen candidate:
 
 ```bash
-python3 -m paper_author_searcher.cli --mode full \
+python3 -m paper_author_searcher.cli.resolve --mode full \
   --input output/SEARCH_DIRECTORY/professor.json \
   --select-author SOURCE:AUTHOR_ID \
   --output-dir output --max-downloads 3
@@ -52,12 +52,12 @@ Inputs can be saved Resolver JSON, Collector JSON (including the existing CLI wr
 
 ```bash
 # Existing collection -> PDF URLs without collecting again
-python3 -m paper_author_searcher.cli --mode pdf-urls \
+python3 -m paper_author_searcher.cli.resolve --mode pdf-urls \
   --input ../paper-test-must/samples/hinton/hinton_papers.authorship.json \
   --output-dir output --max-pdf-papers 2
 
 # Resume the same workflow folder; reuse and revalidate completed files
-python3 -m paper_author_searcher.cli --mode full \
+python3 -m paper_author_searcher.cli.resolve --mode full \
   --input output/SEARCH_DIRECTORY/report.json \
   --resume-dir output/SEARCH_DIRECTORY --max-downloads 3
 ```

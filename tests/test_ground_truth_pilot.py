@@ -16,9 +16,9 @@ from scripts.ground_truth.export_truth import export_truth
 from scripts.ground_truth.export_truth import main as export_main
 from scripts.ground_truth.pilot_review import prepare_review, relationship_suggestions, select_pilot
 
-from paper_author_searcher.evaluation_cli import main as evaluation_main
-from paper_author_searcher.evaluation_matching import GroundTruth, GroundTruthMatcher
-from paper_author_searcher.performance_evaluation import PerformanceEvaluator
+from paper_author_searcher.cli.evaluate import main as evaluation_main
+from paper_author_searcher.quality.evaluation_matching import GroundTruth, GroundTruthMatcher
+from paper_author_searcher.quality.performance_evaluation import PerformanceEvaluator
 
 
 def dataset(count=1):

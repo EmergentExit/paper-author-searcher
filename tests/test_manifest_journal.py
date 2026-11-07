@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from paper_author_searcher.http import DownloadReceipt
+from paper_author_searcher.fulltext.pdf_downloader import PDFDownloader
 from paper_author_searcher.manifest_journal import ManifestJournal, journal_path, replay
-from paper_author_searcher.pdf_downloader import PDFDownloader
+from paper_author_searcher.transport.http import DownloadReceipt
 from test_pdf_downloader import fake_validator, target
 
 

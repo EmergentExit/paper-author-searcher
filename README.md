@@ -21,7 +21,7 @@ paper-search-api serve --open
 命令行：
 
 ```bash
-PYTHONPATH=src python3 -m paper_author_searcher.cli \
+PYTHONPATH=src python3 -m paper_author_searcher.cli.resolve \
   --name 'Geoffrey Hinton' --university 'University of Toronto'
 ```
 
@@ -140,16 +140,16 @@ DBLP 官方作者搜索格式仍是 `/search/author/api?q=...&format=json&h=...`
 
 ```bash
 # 自动解析；resolved 后按已验证 ID 获取论文并保存结果
-PYTHONPATH=src python3 -m paper_author_searcher.cli \
+PYTHONPATH=src python3 -m paper_author_searcher.cli.resolve \
   --name "<professor name>" --university "<university>" \
   --collect-papers --output papers.json
 
 # 查看候选与其 ID
-PYTHONPATH=src python3 -m paper_author_searcher.cli \
+PYTHONPATH=src python3 -m paper_author_searcher.cli.resolve \
   --name "<professor name>" --university "<university>" --list-candidates
 
 # 人工确认某个返回的 ID；只获取此 ID，不扩展到其他候选
-PYTHONPATH=src python3 -m paper_author_searcher.cli \
+PYTHONPATH=src python3 -m paper_author_searcher.cli.resolve \
   --name "<professor name>" --university "<university>" \
   --collect-papers --select-author "openalex:<author ID>" --output papers.json
 ```
@@ -186,12 +186,12 @@ Author ID 加同名不足以 verified。优先检查逐论文目标 Author ID、
 
 ```bash
 # 正常收集；仅在 papers 视图中显示已验证学术论文
-PYTHONPATH=src python3 -m paper_author_searcher.cli \
+PYTHONPATH=src python3 -m paper_author_searcher.cli.resolve \
   --name "<professor>" --university "<university>" --collect-papers \
   --academic-only --ownership-status verified --output papers.json
 
 # 离线重算既有 JSON，不调用 API、不补造旧记录缺失的 ORCID 等证据
-PYTHONPATH=src python3 -m paper_author_searcher.cli \
+PYTHONPATH=src python3 -m paper_author_searcher.cli.resolve \
   --reanalyze-json papers.json --output papers.reviewed.json
 ```
 
@@ -209,7 +209,7 @@ Semantic Scholar 作者论文列表请求 `authors` 获取实际返回的 Author
 
 ```bash
 # 正常 API 重新获取旧归档中已确认身份的论文元数据；建议使用新输出文件
-SSL_CERT_FILE=/etc/ssl/cert.pem PYTHONPATH=src python3 -m paper_author_searcher.cli \
+SSL_CERT_FILE=/etc/ssl/cert.pem PYTHONPATH=src python3 -m paper_author_searcher.cli.resolve \
   --refresh-json papers.reviewed.json --output papers.authorship.json
 ```
 
@@ -224,7 +224,7 @@ SSL_CERT_FILE=/etc/ssl/cert.pem PYTHONPATH=src python3 -m paper_author_searcher.
 新增独立 `Evaluator`，从已有结果和人工 Ground Truth 计算归属 Precision/Recall/F1、全部候选与 verified 召回率、三种归属状态统计，以及去重 pairwise 指标、错误合并与重复遗漏。完整 JSON 保留误检、漏检、人工确认列表与匹配证据，并报告原有来源分页状态。评估不调用 API、不调整生产匹配阈值。
 
 ```bash
-PYTHONPATH=src python3 -m paper_author_searcher.evaluation_cli \
+PYTHONPATH=src python3 -m paper_author_searcher.cli.evaluate \
   --result papers.reviewed.json --ground-truth ground_truth.json \
   --output evaluation.json
 ```
@@ -237,16 +237,16 @@ PYTHONPATH=src python3 -m paper_author_searcher.evaluation_cli \
 
 ```bash
 # 已安装项目时也可使用 pdf-resolve 命令
-PYTHONPATH=src python3 -m paper_author_searcher.pdf_cli \
+PYTHONPATH=src python3 -m paper_author_searcher.cli.pdf \
   --input papers.authorship.json --output papers.pdf_urls.json
 
 # 小规模验证：按保存顺序处理前 5 篇符合归属条件的论文
-PYTHONPATH=src python3 -m paper_author_searcher.pdf_cli \
+PYTHONPATH=src python3 -m paper_author_searcher.cli.pdf \
   --input ../paper-test-must/samples/hinton/hinton_papers.authorship.json --output ../paper-test-must/samples/hinton/hinton_papers.pdf_urls.sample.json \
   --max-papers 5 --timeout 8 --retries 1
 
 # 明确包含待审核论文；Unpaywall 需要真实联系邮箱
-PYTHONPATH=src python3 -m paper_author_searcher.pdf_cli \
+PYTHONPATH=src python3 -m paper_author_searcher.cli.pdf \
   --input papers.authorship.json --output papers.pdf_urls.review.json \
   --include-needs-review --require-unpaywall
 ```
@@ -283,12 +283,12 @@ PYTHONPATH=src python3 -m paper_author_searcher.pdf_cli \
 # 在当前 Python 环境安装下载阶段的可选依赖
 python3 -m pip install -e '.[download]'
 
-python3 -m paper_author_searcher.download_cli \
+python3 -m paper_author_searcher.cli.download \
   --input papers.pdf_urls.json --output-dir downloaded_papers \
   --max-downloads 3 --timeout 15 --retries 2 --max-file-mb 50
 
 # 明确允许待审核归属；候选 URL 仍须已验证
-python3 -m paper_author_searcher.download_cli \
+python3 -m paper_author_searcher.cli.download \
   --input papers.pdf_urls.json --output-dir downloaded_papers \
   --include-needs-review
 ```
@@ -311,7 +311,7 @@ HTTP 流式写入临时 `.part` 文件，默认限制单文件 128 MiB，逐块�
 
 ```bash
 python3 -m pip install -e '.[download]'
-python3 -m paper_author_searcher.cli --mode full \
+python3 -m paper_author_searcher.cli.resolve --mode full \
   --name 'Geoffrey Hinton' --university 'University of Toronto' \
   --output-dir output --max-downloads 3
 ```
@@ -321,7 +321,7 @@ python3 -m paper_author_searcher.cli --mode full \
 限量测试可加 `--max-pages 1 --page-size 5 --max-pdf-papers 2 --max-downloads 1`。PDF 下载数量限制不会自动限制前面的检索请求。每次执行生成独立目录，保存原始论文证据、PDF URL、PDF 文件、manifest 和阶段报告；支持 `--input` 读取旧 JSON 或报告续跑。
 
 ```bash
-python3 -m paper_author_searcher.cli --mode full \
+python3 -m paper_author_searcher.cli.resolve --mode full \
   --input output/SEARCH_DIRECTORY/report.json \
   --resume-dir output/SEARCH_DIRECTORY --max-downloads 3
 ```

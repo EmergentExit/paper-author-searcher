@@ -3,10 +3,10 @@
 import unittest
 from dataclasses import replace
 
-from paper_author_searcher.http import SourceError
-from paper_author_searcher.institution_names import InstitutionNames
+from paper_author_searcher.collection.name_rarity import NameRarity
 from paper_author_searcher.models import ProfessorQuery
-from paper_author_searcher.name_rarity import NameRarity
+from paper_author_searcher.resolution.institution_names import InstitutionNames
+from paper_author_searcher.transport.http import SourceError
 
 LSE = {
     'display_name': 'London School of Economics and Political Science',

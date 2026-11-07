@@ -5,7 +5,8 @@ import unittest
 
 from paper_author_searcher import ProfessorQuery as Q
 from paper_author_searcher.config import DEFAULT_ANCHORS
-from paper_author_searcher.homepage_citations import (
+from paper_author_searcher.resolution.anchoring import RecordedAnchorFinder, ScholarlyAnchorFinder
+from paper_author_searcher.resolution.homepage_citations import (
     CitationRanker,
     HomepageCitation,
     HomepageReader,
@@ -14,8 +15,7 @@ from paper_author_searcher.homepage_citations import (
     mentions,
     prioritise,
 )
-from paper_author_searcher.http import URLProbe
-from paper_author_searcher.identity_anchors import RecordedAnchorFinder, ScholarlyAnchorFinder
+from paper_author_searcher.transport.http import URLProbe
 from semantic_scholar_batch import BatchFromSingleLookups
 
 TITLE_ONLY_PAGE = """

@@ -5,9 +5,9 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from paper_author_searcher.http import HttpClient, SourceError
 from paper_author_searcher.jsonio import read_json, write_json
 from paper_author_searcher.matching import normalize
+from paper_author_searcher.transport.http import HttpClient, SourceError
 
 from .roster import BenchmarkPerson
 from .settings import BenchmarkSettings

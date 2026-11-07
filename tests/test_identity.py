@@ -5,8 +5,8 @@ from contextlib import redirect_stdout
 from unittest.mock import patch
 
 from paper_author_searcher import AuthorCandidate, ProfessorQuery, ProfessorResolver
-from paper_author_searcher.cli import main
-from paper_author_searcher.identity import linked
+from paper_author_searcher.cli.resolve import main
+from paper_author_searcher.resolution.identity import linked
 from test_resolver import Provider
 
 

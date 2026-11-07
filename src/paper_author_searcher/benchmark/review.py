@@ -8,8 +8,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from paper_author_searcher.evaluation_matching import LABELS, GroundTruth, GroundTruthMatcher
 from paper_author_searcher.matching import canonical_doi, normalize
+from paper_author_searcher.quality.evaluation_matching import LABELS, GroundTruth, GroundTruthMatcher
 from paper_author_searcher.status import AnnotationState, OwnershipStatus
 
 from .truth_sources import clean_arxiv, clean_doi, parse_year

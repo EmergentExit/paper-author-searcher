@@ -7,10 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from paper_author_searcher.collection.paper_authorship import byline_forms
 from paper_author_searcher.config import DEFAULT_MATCHING
-from paper_author_searcher.evaluation_matching import GroundTruth, bibliographic_name_agrees
 from paper_author_searcher.matching import canonical_doi, name_similarity, normalize
-from paper_author_searcher.paper_authorship import byline_forms
+from paper_author_searcher.quality.evaluation_matching import GroundTruth, bibliographic_name_agrees
 from paper_author_searcher.status import AnnotationState
 
 from .roster import BenchmarkPerson

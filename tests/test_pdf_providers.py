@@ -4,10 +4,8 @@ from dataclasses import replace
 from unittest.mock import Mock, patch
 
 from paper_author_searcher.config import DEFAULT_PDF
-from paper_author_searcher.http import SourceError, URLProbe
-from paper_author_searcher.pacing import RequestPacer
-from paper_author_searcher.pdf_identity import arxiv_id, metadata_identity
-from paper_author_searcher.pdf_providers import (
+from paper_author_searcher.fulltext.pdf_identity import arxiv_id, metadata_identity
+from paper_author_searcher.fulltext.pdf_providers import (
     ArxivPDFProvider,
     EuropePMCPDFProvider,
     ExistingPDFProvider,
@@ -20,6 +18,8 @@ from paper_author_searcher.pdf_providers import (
     UnpaywallPDFProvider,
     openalex_arxiv_ids,
 )
+from paper_author_searcher.transport.http import SourceError, URLProbe
+from paper_author_searcher.transport.pacing import RequestPacer
 
 
 def paper():

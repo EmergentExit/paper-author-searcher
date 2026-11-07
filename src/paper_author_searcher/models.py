@@ -342,7 +342,7 @@ class PaperCollectionResult(ValidatedStatuses):
     career: list[CareerPosition] = field(default_factory=list)
 
     def to_dict(self, academic_only: bool = False, ownership_statuses: Sequence[str] | None = None) -> dict[str, Any]:
-        from .paper_types import ACADEMIC_TYPES
+        from .collection.paper_types import ACADEMIC_TYPES
 
         data = asdict(self)
         # Source records already appear in the deduplicated papers.

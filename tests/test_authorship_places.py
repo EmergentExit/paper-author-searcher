@@ -1,7 +1,7 @@
 import unittest
 
-from paper_author_searcher.authorship_places import AuthorshipPlaces
-from paper_author_searcher.http import SourceError
+from paper_author_searcher.collection.authorship_places import AuthorshipPlaces
+from paper_author_searcher.transport.http import SourceError
 
 
 class Client:

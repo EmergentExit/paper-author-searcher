@@ -3,8 +3,19 @@ import unittest
 from dataclasses import replace
 from types import SimpleNamespace
 
+from paper_author_searcher.collection.listed_works import RETRIEVED_EVIDENCE
+from paper_author_searcher.collection.ownership import OwnershipContext
+from paper_author_searcher.collection.ownership.passes import NamesakeGroups
+from paper_author_searcher.collection.paper_deduplication import deduplicate_papers
+from paper_author_searcher.collection.paper_ownership import (
+    PaperOwnershipValidator,
+    abbreviated,
+    aggregate,
+    record_fields,
+)
+from paper_author_searcher.collection.paper_reanalysis import reanalyze_saved_result
+from paper_author_searcher.collection.paper_types import classify_record
 from paper_author_searcher.config import OwnershipConfig
-from paper_author_searcher.listed_works import RETRIEVED_EVIDENCE
 from paper_author_searcher.models import (
     AnchorEvidence,
     CareerPosition,
@@ -13,12 +24,6 @@ from paper_author_searcher.models import (
     PaperSourceResult,
     ProfessorProfile,
 )
-from paper_author_searcher.ownership import OwnershipContext
-from paper_author_searcher.ownership.passes import NamesakeGroups
-from paper_author_searcher.paper_deduplication import deduplicate_papers
-from paper_author_searcher.paper_ownership import PaperOwnershipValidator, abbreviated, aggregate, record_fields
-from paper_author_searcher.paper_reanalysis import reanalyze_saved_result
-from paper_author_searcher.paper_types import classify_record
 from paper_author_searcher.status import AnchorKind, OwnershipStatus
 
 
@@ -891,8 +896,8 @@ class ClassificationAndStatisticsTests(unittest.TestCase):
         self.assertEqual(len(result.papers[0].records), 1)
 
     def test_raw_parse_failure_is_retained_and_other_records_survive(self):
-        from paper_author_searcher.paper_providers import OpenAlexPaperProvider
-        from paper_author_searcher.providers import OpenAlexProvider
+        from paper_author_searcher.collection.paper_providers import OpenAlexPaperProvider
+        from paper_author_searcher.resolution.providers import OpenAlexProvider
         from test_paper_collector import Client, openalex_work
 
         client = Client([{'results': [42, openalex_work('valid')], 'meta': {'next_cursor': None}}])

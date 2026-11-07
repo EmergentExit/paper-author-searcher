@@ -1,7 +1,7 @@
 """Fake clients answer Semantic Scholar's paper batch from their own single-paper answers."""
 
 from paper_author_searcher.config import DEFAULT_SOURCES
-from paper_author_searcher.http import SourceError
+from paper_author_searcher.transport.http import SourceError
 
 
 class BatchFromSingleLookups:

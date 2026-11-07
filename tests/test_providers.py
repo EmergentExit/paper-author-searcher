@@ -2,7 +2,7 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from paper_author_searcher import ProfessorQuery
-from paper_author_searcher.providers import (
+from paper_author_searcher.resolution.providers import (
     DBLPProvider,
     OpenAlexProvider,
     SemanticScholarProvider,

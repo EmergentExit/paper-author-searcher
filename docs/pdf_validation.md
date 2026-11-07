@@ -37,7 +37,7 @@ HTML 预览确实截断时从 64 KiB 扩展一次到默认 1 MiB；PDF 文件头
 可对保存的两份运行生成离线诊断，不重新访问 API，也不修改原始输入：
 
 ```bash
-.venv/bin/python -m paper_author_searcher.pdf_search_diagnostics \
+.venv/bin/python -m paper_author_searcher.fulltext.pdf_search_diagnostics \
   --before PATH_TO_BEFORE_RUN --after PATH_TO_AFTER_RUN \
   --output reports/performance/search_diagnostics.json
 ```
@@ -49,7 +49,7 @@ HTML 预览确实截断时从 64 KiB 扩展一次到默认 1 MiB；PDF 文件头
 不访问 API，不改动原 PDF、manifest 或归属状态。先核对原文件大小与 SHA-256，使用原始已验证链接绑定和当前解析器，输出独立报告。
 
 ```bash
-.venv/bin/python -m paper_author_searcher.pdf_revalidation \
+.venv/bin/python -m paper_author_searcher.fulltext.pdf_revalidation \
   --manifest PATH_TO_RUN/manifest.json \
   --pdf-report PATH_TO_RUN/pdf_urls.json \
   --only-needs-review --output review_revalidation.json
@@ -62,7 +62,7 @@ HTML 预览确实截断时从 64 KiB 扩展一次到默认 1 MiB；PDF 文件头
 在已配置真实 `UNPAYWALL_EMAIL` 的原终端执行。工具要求显式传入原 HTTP 超时和重试次数；不推测旧报告缺失的配置。使用原 Collector 存档，检查按原顺序选择的 verified 范围与基线完全相同，重新进行来源查询和下载，不重新运行 Resolver/Collector，也不使用人工参考集 PDF 答案。
 
 ```bash
-SSL_CERT_FILE=/etc/ssl/cert.pem .venv/bin/python -m paper_author_searcher.pdf_validation_benchmark \
+SSL_CERT_FILE=/etc/ssl/cert.pem .venv/bin/python -m paper_author_searcher.quality.pdf_validation_benchmark \
   --baseline-run output/performance/source_discovery/search_Andrew_Ng_20261011T193551Z_c9900b1fb016 \
   --output-dir output/performance/pdf_validation \
   --timeout 6 --retries 0

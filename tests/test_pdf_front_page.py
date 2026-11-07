@@ -12,10 +12,8 @@ from pypdf import PdfWriter
 
 from paper_author_searcher.composition import RunOptions, ServiceContainer
 from paper_author_searcher.config import ExtractionConfig
-from paper_author_searcher.http_budget import CostLedger
-from paper_author_searcher.models import PDFFileValidation
-from paper_author_searcher.pdf_file_validation import front_pages
-from paper_author_searcher.pdf_front_page import (
+from paper_author_searcher.fulltext.pdf_file_validation import front_pages
+from paper_author_searcher.fulltext.pdf_front_page import (
     NOTHING_SEEN,
     READ_EVIDENCE,
     YEAR_DIFFERS,
@@ -24,8 +22,10 @@ from paper_author_searcher.pdf_front_page import (
     FrontPageValidator,
     LayoutFrontPageReader,
 )
+from paper_author_searcher.models import PDFFileValidation
 from paper_author_searcher.settings import Settings
 from paper_author_searcher.status import FormatStatus, IdentityStatus, PDFValidationStatus
+from paper_author_searcher.transport.http_budget import CostLedger
 
 PAPER = {
     'title': 'Learning the structure of deep sparse graphical models',

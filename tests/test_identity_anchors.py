@@ -10,16 +10,16 @@ from paper_author_searcher import AuthorCandidate as C
 from paper_author_searcher import ProfessorQuery as Q
 from paper_author_searcher import ProfessorResolver
 from paper_author_searcher.config import DEFAULT_ANCHORS, DEFAULT_MATCHING
-from paper_author_searcher.http import SourceError
-from paper_author_searcher.identity_anchors import (
+from paper_author_searcher.models import AnchorEvidence, ProfessorProfile
+from paper_author_searcher.resolution.anchoring import (
     IdentityAnchors,
     RecordedAnchorFinder,
     ScholarlyAnchorFinder,
     homepage_papers,
     paper_hints,
 )
-from paper_author_searcher.identity_ranking import IdentityRanking
-from paper_author_searcher.models import AnchorEvidence, ProfessorProfile
+from paper_author_searcher.resolution.identity_ranking import IdentityRanking
+from paper_author_searcher.transport.http import SourceError
 from semantic_scholar_batch import BatchFromSingleLookups
 
 
@@ -432,7 +432,7 @@ if __name__ == '__main__':
 
 class AdjudicationTests(unittest.TestCase):
     def setUp(self):
-        from paper_author_searcher.identity_adjudication import AdjudicationVerdict
+        from paper_author_searcher.resolution.identity_adjudication import AdjudicationVerdict
 
         self.Verdict = AdjudicationVerdict
 
@@ -475,7 +475,7 @@ class AdjudicationTests(unittest.TestCase):
     def test_claude_adjudicator_parses_structured_output_and_handles_refusal(self):
         from types import SimpleNamespace
 
-        from paper_author_searcher.identity_adjudication import ClaudeIdentityAdjudicator
+        from paper_author_searcher.resolution.identity_adjudication import ClaudeIdentityAdjudicator
 
         class Messages:
             def __init__(self, response):

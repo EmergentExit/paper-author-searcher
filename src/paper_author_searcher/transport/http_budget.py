@@ -1,0 +1,156 @@
+"""Hard spending cap for metered APIs: estimate each request's price before sending, refuse past the cap.
+
+Place it inside the response cache (cache -> budget -> client) so cached replays cost nothing.
+"""
+
+import logging
+import threading
+from dataclasses import dataclass, field
+from typing import Any, Protocol
+from urllib.parse import urlsplit
+
+# The budget's prices and cap are configuration; kept importable from here for existing callers.
+from paper_author_searcher.config import BudgetConfig
+
+from .http import SourceError
+from .http_decorators import HttpClientDecorator
+
+logger = logging.getLogger(__name__)
+
+
+class BudgetExceeded(SourceError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_type='budget_exceeded')
+
+
+class DailyBudget(Protocol):
+    """A cap on one host's spend per day, across every run; raises BudgetExceeded past it."""
+
+    def charge(self, host: str, cost: float) -> None: ...
+
+
+@dataclass
+class CostLedger:
+    """Shared by every client in one run so the cap covers the whole run, not each request path."""
+
+    maximum_cost_usd: float
+    spent_usd: float = 0.0
+    requests: dict[str, int] = field(default_factory=dict)
+    refused: int = 0
+    failed: int = 0
+    lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+
+    def charge(self, kind: str, cost: float) -> None:
+        with self.lock:
+            if self.spent_usd + cost > self.maximum_cost_usd + 1e-12:
+                self.refused += 1
+                logger.warning(
+                    'API budget of $%.2f reached; refused a %s request (%d refused so far)',
+                    self.maximum_cost_usd,
+                    kind,
+                    self.refused,
+                )
+                raise BudgetExceeded(
+                    f'Run budget of ${self.maximum_cost_usd:.2f} reached (spent '
+                    f'${self.spent_usd:.4f}); request not sent'
+                )
+            self.spent_usd += cost
+            self.requests[kind] = self.requests.get(kind, 0) + 1
+
+    def record(self, kind: str, cost: float) -> None:
+        """Add a cost only known after the fact (an LLM call's tokens); ``exhausted`` refuses the next one."""
+        with self.lock:
+            self.spent_usd += cost
+            self.requests[kind] = self.requests.get(kind, 0) + 1
+
+    def note_failure(self) -> None:
+        """A paid request that did not get through (billing, auth, outage); results should say so."""
+        with self.lock:
+            self.failed += 1
+
+    def exhausted(self) -> bool:
+        with self.lock:
+            return self.spent_usd >= self.maximum_cost_usd
+
+    def summary(self) -> dict:
+        return {
+            'maximum_cost_usd': self.maximum_cost_usd,
+            'estimated_cost_usd': round(self.spent_usd, 6),
+            'metered_requests': dict(self.requests),
+            'refused_requests': self.refused,
+            'failed_requests': self.failed,
+        }
+
+
+_LEDGERS: dict[str, CostLedger] = {}
+_LEDGERS_LOCK = threading.Lock()
+
+
+def shared_ledger(name: str, maximum_cost_usd: float) -> CostLedger:
+    with _LEDGERS_LOCK:
+        ledger = _LEDGERS.get(name)
+        if ledger is None:
+            ledger = _LEDGERS[name] = CostLedger(maximum_cost_usd)
+        return ledger
+
+
+def ledger_summary(name: str) -> dict | None:
+    ledger = _LEDGERS.get(name)
+    return ledger.summary() if ledger else None
+
+
+def release_ledger(name: str) -> dict | None:
+    """Drop a finished run's ledger (a long-running worker would otherwise keep one per run) and return its summary."""
+    with _LEDGERS_LOCK:
+        ledger = _LEDGERS.pop(name, None)
+    return ledger.summary() if ledger else None
+
+
+def classify(url: str, params: dict | None) -> str:
+    """'search', 'listing' or 'single' for a metered request."""
+    params = params or {}
+    if params.get('search') or '.search:' in str(params.get('filter') or ''):
+        return 'search'
+    path = urlsplit(url).path.rstrip('/')
+    if params.get('filter') or params.get('cursor') or path.endswith(('/works', '/authors', '/institutions')):
+        return 'listing'
+    return 'single'
+
+
+class BudgetedHttpClient(HttpClientDecorator):
+    """Prices each metered GET before sending it and refuses requests past the run's budget or the day's."""
+
+    def __init__(
+        self, client: Any, ledger: CostLedger, config: BudgetConfig | None = None, daily: DailyBudget | None = None
+    ) -> None:
+        config = config or BudgetConfig()
+        super().__init__(client)
+        self.ledger = ledger
+        self.daily = daily
+        self.hosts = {host.host: host for host in config.hosts}
+
+    def get(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        xml: bool = False,
+    ) -> Any:
+        host = self.hosts.get(urlsplit(url).hostname or '')
+        if host is not None:
+            kind = classify(url, params)
+            cost = getattr(host, kind)
+            self.ledger.charge(f'{host.host}:{kind}', cost)
+            if self.daily is not None and cost > 0:
+                self.daily.charge(host.host, cost)
+        return self.client.get(url, params, headers, xml)
+
+
+def budgeted_client(
+    client: Any, maximum_cost_usd: float | None, ledger_name: str = 'default', daily: DailyBudget | None = None
+) -> Any:
+    if maximum_cost_usd is None:
+        return client
+    return BudgetedHttpClient(
+        client, shared_ledger(ledger_name, maximum_cost_usd), BudgetConfig(maximum_cost_usd=maximum_cost_usd), daily
+    )

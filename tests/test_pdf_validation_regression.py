@@ -7,15 +7,15 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from paper_author_searcher.config import DEFAULT_DOWNLOAD, DEFAULT_PDF
-from paper_author_searcher.http import DownloadReceipt, SourceError, URLProbe
+from paper_author_searcher.fulltext.pdf_downloader import PDFDownloader
+from paper_author_searcher.fulltext.pdf_file_validation import inspect_pdf
+from paper_author_searcher.fulltext.pdf_resource_requests import PublicResourceRequests
+from paper_author_searcher.fulltext.pdf_revalidation import revalidate
 from paper_author_searcher.models import PDFFileValidation
-from paper_author_searcher.pdf_downloader import PDFDownloader
-from paper_author_searcher.pdf_file_validation import inspect_pdf
-from paper_author_searcher.pdf_resource_requests import PublicResourceRequests
-from paper_author_searcher.pdf_revalidation import revalidate
-from paper_author_searcher.pdf_validation_benchmark import benchmark_inputs, run_benchmark
-from paper_author_searcher.performance_diagnostics import workflow_outcomes
+from paper_author_searcher.quality.pdf_validation_benchmark import benchmark_inputs, run_benchmark
+from paper_author_searcher.quality.performance_diagnostics import workflow_outcomes
 from paper_author_searcher.settings import Credentials, Settings
+from paper_author_searcher.transport.http import DownloadReceipt, SourceError, URLProbe
 from pdf_fixtures import HAS_PYPDF, make_pdf
 from test_pdf_downloader import fake_client, target
 
@@ -196,7 +196,7 @@ class BenchmarkTests(unittest.TestCase):
                 benchmark_inputs(root)
 
     def test_missing_contact_stops_benchmark_without_requests(self):
-        with patch('paper_author_searcher.pdf_validation_benchmark.ServiceContainer') as container:
+        with patch('paper_author_searcher.quality.pdf_validation_benchmark.ServiceContainer') as container:
             with self.assertRaisesRegex(ValueError, 'UNPAYWALL_EMAIL'):
                 run_benchmark(Path('baseline'), Path('output'), 6, 0, settings=Settings())
             container.assert_not_called()
@@ -215,14 +215,16 @@ class BenchmarkTests(unittest.TestCase):
             archive = {'papers': [target()]}
             settings = Settings(credentials=Credentials(unpaywall_email='private@example.test'))
             with (
-                patch('paper_author_searcher.pdf_validation_benchmark.benchmark_inputs', return_value=(archive, 1)),
                 patch(
-                    'paper_author_searcher.pdf_validation_benchmark.summarize_runs',
+                    'paper_author_searcher.quality.pdf_validation_benchmark.benchmark_inputs', return_value=(archive, 1)
+                ),
+                patch(
+                    'paper_author_searcher.quality.pdf_validation_benchmark.summarize_runs',
                     return_value={'runs': [{'statistics': {}}]},
                 ),
-                patch('paper_author_searcher.pdf_validation_benchmark.ServiceContainer') as container,
+                patch('paper_author_searcher.quality.pdf_validation_benchmark.ServiceContainer') as container,
                 patch(
-                    'paper_author_searcher.pdf_validation_benchmark.compare_runs',
+                    'paper_author_searcher.quality.pdf_validation_benchmark.compare_runs',
                     return_value={'before': {}, 'after': {}},
                 ),
             ):
