@@ -55,6 +55,28 @@ class SourceConfig:
 
 
 DEFAULT_HTTP = HttpConfig()
+
+
+@dataclass(frozen=True)
+class MeteredHost:
+    """Per-request prices in USD; defaults follow OpenAlex's published list (verify on its pricing page)."""
+
+    host: str = 'api.openalex.org'
+    search: float = 0.001  # any full-text search parameter
+    listing: float = 0.0001  # filtered or paged list endpoints
+    single: float = 0.0  # one record by ID
+
+
+@dataclass(frozen=True)
+class BudgetConfig:
+    maximum_cost_usd: float = METERED_COST_CAP_USD
+    hosts: tuple[MeteredHost, ...] = (MeteredHost(),)
+
+    def __post_init__(self) -> None:
+        if self.maximum_cost_usd < 0:
+            raise ValueError('maximum_cost_usd must not be negative')
+
+
 DEFAULT_SOURCES = SourceConfig()
 
 
