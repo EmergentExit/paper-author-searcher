@@ -1,9 +1,12 @@
 """Source adapters for identity metadata. No PDFs or publication bodies."""
 
-from typing import Protocol
+import xml.etree.ElementTree as ET
+from collections.abc import Collection, Iterable
+from typing import Any, Protocol
 
-from .config import DEFAULT_MATCHING, DEFAULT_SOURCES
-from .http import SourceError
+from .config import DEFAULT_MATCHING, DEFAULT_SOURCES, MatchingConfig, SourceConfig
+from .http import HttpTransport, MetadataReader, SourceError
+from .json_types import JSONObject
 from .matching import best_similarity, canonical_doi, identity_work, institution_similarity, name_similarity
 from .models import AuthorCandidate, CuratedPosition, ProfessorQuery
 from .precision_guards import DepartmentMatcher
@@ -15,7 +18,7 @@ class AuthorProvider(Protocol):
     def search(self, query: ProfessorQuery) -> list[AuthorCandidate]: ...
 
 
-def _display_names(items):
+def _display_names(items: Iterable[JSONObject] | None) -> list[str]:
     names = []
     for item in items or []:
         if item.get('display_name'):
@@ -30,13 +33,13 @@ class OpenAlexProvider:
 
     def __init__(
         self,
-        client,
-        api_key=None,
-        limit=None,
-        enrich_limit=None,
-        works_limit=None,
-        source_config=DEFAULT_SOURCES,
-        matching_config=DEFAULT_MATCHING,
+        client: HttpTransport,
+        api_key: str | None = None,
+        limit: int | None = None,
+        enrich_limit: int | None = None,
+        works_limit: int | None = None,
+        source_config: SourceConfig = DEFAULT_SOURCES,
+        matching_config: MatchingConfig = DEFAULT_MATCHING,
     ) -> None:
         self.client = client
         self.api_key = api_key
@@ -47,7 +50,7 @@ class OpenAlexProvider:
         self.matching_config = matching_config
         self.source_config = source_config
 
-    def search(self, query):
+    def search(self, query: ProfessorQuery) -> list[AuthorCandidate]:
         data = self.client.get(
             self.base_url + '/authors',
             {'search': query.name, 'per-page': self.limit, 'api_key': self.api_key},
@@ -72,7 +75,7 @@ class OpenAlexProvider:
                 candidate.metadata_errors.append(str(exc))
         return ranked
 
-    def _parse_author(self, item):
+    def _parse_author(self, item: JSONObject) -> AuthorCandidate:
         current = _display_names(item.get('last_known_institutions'))
         historical = []
         for affiliation in item.get('affiliations') or []:
@@ -99,7 +102,7 @@ class OpenAlexProvider:
             url=item['id'],
         )
 
-    def lookup(self, author_id):
+    def lookup(self, author_id: str) -> AuthorCandidate:
         """Fetch one author by ID (used when an identity anchor names a profile the search missed)."""
         item = self.client.get(self.base_url + '/authors/' + author_id, {'api_key': self.api_key})
         candidate = self._parse_author(item)
@@ -109,7 +112,7 @@ class OpenAlexProvider:
             candidate.metadata_errors.append(str(exc))
         return candidate
 
-    def _institution_ids(self, query):
+    def _institution_ids(self, query: ProfessorQuery) -> list[str]:
         universities = [query.university, *list(query.university_aliases)]
         data = self.client.get(
             self.base_url + '/institutions',
@@ -131,7 +134,7 @@ class OpenAlexProvider:
                 ids.append(item['id'].rsplit('/', 1)[-1])
         return ids
 
-    def _institution_scoped_authors(self, query):
+    def _institution_scoped_authors(self, query: ProfessorQuery) -> list[JSONObject]:
         """Authors with the name who were ever affiliated with the requested institution."""
         if not self.source_config.institution_scoped_search:
             return []
@@ -149,7 +152,9 @@ class OpenAlexProvider:
         )
         return data.get('results', [])
 
-    def _enrichment_candidates(self, query, candidates, scoped=frozenset()):
+    def _enrichment_candidates(
+        self, query: ProfessorQuery, candidates: Iterable[AuthorCandidate], scoped: Collection[str] = frozenset()
+    ) -> list[AuthorCandidate]:
         scored = []
         for candidate in candidates:
             similarity = best_similarity(
@@ -163,7 +168,7 @@ class OpenAlexProvider:
         scored.sort(key=lambda item: (item[1].author_id not in scoped, -item[0]))
         return [candidate for _, candidate in scored[: self.enrich_limit]]
 
-    def _enrich(self, candidate) -> None:
+    def _enrich(self, candidate: AuthorCandidate) -> None:
         params = {
             'filter': 'authorships.author.id:' + candidate.author_id,
             'per-page': self.works_limit,
@@ -188,7 +193,7 @@ class OpenAlexProvider:
         candidate.affiliations = sorted(set(candidate.affiliations))
 
     @staticmethod
-    def _add_authorship(candidate, authorship) -> None:
+    def _add_authorship(candidate: AuthorCandidate, authorship: JSONObject) -> None:
         author = authorship.get('author') or {}
         author_id = (author.get('id') or '').rsplit('/', 1)[-1]
         if author_id == candidate.author_id:
@@ -205,7 +210,12 @@ class SemanticScholarProvider:
     AUTHOR_FIELDS = 'name,affiliations,externalIds,url,' 'papers.title,papers.externalIds,papers.authors'
 
     def __init__(
-        self, client, api_key=None, limit=None, source_config=DEFAULT_SOURCES, matching_config=DEFAULT_MATCHING
+        self,
+        client: HttpTransport,
+        api_key: str | None = None,
+        limit: int | None = None,
+        source_config: SourceConfig = DEFAULT_SOURCES,
+        matching_config: MatchingConfig = DEFAULT_MATCHING,
     ) -> None:
         self.client = client
         self.api_key = api_key
@@ -213,7 +223,7 @@ class SemanticScholarProvider:
         self.limit = source_config.author_limit if limit is None else limit
         self.matching_config = matching_config
 
-    def search(self, query):
+    def search(self, query: ProfessorQuery) -> list[AuthorCandidate]:
         headers = {}
         if self.api_key:
             headers['x-api-key'] = self.api_key
@@ -227,12 +237,12 @@ class SemanticScholarProvider:
             candidates.append(self._parse_author(item))
         return candidates
 
-    def lookup(self, author_id):
+    def lookup(self, author_id: str) -> AuthorCandidate:
         headers = {'x-api-key': self.api_key} if self.api_key else {}
         item = self.client.get(self.base_url + '/author/' + str(author_id), {'fields': self.AUTHOR_FIELDS}, headers)
         return self._parse_author(item)
 
-    def _parse_author(self, item):
+    def _parse_author(self, item: JSONObject) -> AuthorCandidate:
         dois = []
         topics = []
         coauthors = []
@@ -276,7 +286,12 @@ class DBLPProvider:
     discovers_profiles = True
 
     def __init__(
-        self, client, limit=None, source_config=DEFAULT_SOURCES, matching_config=DEFAULT_MATCHING, departments=None
+        self,
+        client: MetadataReader,
+        limit: int | None = None,
+        source_config: SourceConfig = DEFAULT_SOURCES,
+        matching_config: MatchingConfig = DEFAULT_MATCHING,
+        departments: DepartmentMatcher | None = None,
     ) -> None:
         self.client = client
         self.base_url = source_config.dblp_url.rstrip('/')
@@ -285,7 +300,7 @@ class DBLPProvider:
         # Splits curated affiliation notes into institution names and units (precision_guards.DepartmentMatcher).
         self.departments = departments or DepartmentMatcher()
 
-    def search(self, query):
+    def search(self, query: ProfessorQuery) -> list[AuthorCandidate]:
         data = self.client.get(
             self.base_url + '/search/author/api',
             {'q': query.name, 'format': 'json', 'h': self.limit},
@@ -315,14 +330,14 @@ class DBLPProvider:
         return candidates
 
     @staticmethod
-    def _author_id(url):
+    def _author_id(url: str) -> str:
         author_id = url.split('/pid/')[-1]
         if author_id.endswith('.html'):
             author_id = author_id[: -len('.html')]
         return author_id
 
     @staticmethod
-    def _add_person_metadata(candidate, root, departments) -> None:
+    def _add_person_metadata(candidate: AuthorCandidate, root: ET.Element, departments: DepartmentMatcher) -> None:
         for person in root.findall('person'):
             for author in person.findall('author'):
                 if author.text:
@@ -346,7 +361,9 @@ class DBLPProvider:
 
     @staticmethod
     def _add_publication_metadata(
-        candidate, root, minimum_title_words=DEFAULT_MATCHING.work_title_minimum_words
+        candidate: AuthorCandidate,
+        root: ET.Element,
+        minimum_title_words: int = DEFAULT_MATCHING.work_title_minimum_words,
     ) -> None:
         for record in root.findall('r'):
             for author in record.findall('.//author'):
@@ -363,7 +380,7 @@ class DBLPProvider:
             candidate.works.append(identity_work(dois, arxiv, title, minimum_title_words))
 
 
-def _extend_unique(values, additions) -> None:
+def _extend_unique(values: list[Any], additions: Iterable[Any]) -> None:
     for value in additions:
         if value not in values:
             values.append(value)
