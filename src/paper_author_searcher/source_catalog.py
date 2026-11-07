@@ -7,6 +7,7 @@ Factories receive the ``ServiceContainer``, so they draw clients, settings and c
 
 from typing import TYPE_CHECKING, TypeVar
 
+from .collection.arxiv_api import ArxivApi
 from .collection.cs_sources import ArxivAuthorSearch
 from .collection.dblp_dump import DblpDumpClient, DblpWorkLookup
 from .collection.listed_works import (
@@ -178,7 +179,7 @@ def _nber_pdf(container: 'ServiceContainer') -> NBERPDFProvider:
 
 @PDF_SOURCES.register('arxiv')
 def _arxiv_pdf(container: 'ServiceContainer') -> ArxivPDFProvider:
-    return ArxivPDFProvider(container.resource_requests, container.pdf_config)
+    return ArxivPDFProvider(container.resource_requests, container.pdf_config, container.settings.sources)
 
 
 @PDF_SOURCES.register('journal_catalog')
@@ -231,9 +232,8 @@ def _crossref_lookup(container: 'ServiceContainer') -> CrossrefWorkLookup:
 @WORK_LOOKUPS.register('arxiv')
 def _arxiv_lookup(container: 'ServiceContainer') -> ArxivWorkLookup:
     settings = container.settings
-    return ArxivWorkLookup(
-        container.http_client, settings.sources.arxiv_url, settings.listed_works, AuthorMatcher(settings.matching)
-    )
+    api = ArxivApi(container.http_client, settings.sources.arxiv_url, settings.sources)
+    return ArxivWorkLookup(api, settings.listed_works, AuthorMatcher(settings.matching))
 
 
 @WEB_SEARCH.register('brave')
