@@ -2,7 +2,7 @@
 
 One module per source family; every provider answers find(paper) with a PDFProviderResult."""
 
-from .base import VERSION_TYPES, MetadataPDFProvider, make_candidate
+from .base import VERSION_TYPES, MetadataPDFProvider, PDFProvider, make_candidate
 from .existing import ExistingPDFProvider
 from .homepage import HomepagePDFProvider
 from .landing_pages import CitationMetadata, LandingPagePDFProvider
@@ -33,6 +33,7 @@ __all__ = [
     'NBERPDFProvider',
     'OpenAIREPDFProvider',
     'OpenAlexPDFProvider',
+    'PDFProvider',
     'SemanticScholarPDFProvider',
     'UnpaywallPDFProvider',
     'WebSearchPDFProvider',
