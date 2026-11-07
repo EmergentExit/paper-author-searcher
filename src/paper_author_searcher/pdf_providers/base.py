@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from http import HTTPStatus
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Protocol
 
 from paper_author_searcher.config import DEFAULT_SOURCES
 from paper_author_searcher.http import SourceError
@@ -17,6 +17,16 @@ VERSION_TYPES = {
     'accepted_manuscript': 'accepted_manuscript',
     'submitted_manuscript': 'submitted_manuscript',
 }
+
+
+class PDFProvider(Protocol):
+    """A source of PDF candidates for one paper. It may also define ``prepare_profile(profile)``,
+    ``prepare(papers)`` and ``request_statistics()``; ``PDFResolver`` calls each one a provider has."""
+
+    @property
+    def name(self) -> str: ...
+
+    def find(self, paper: Any) -> PDFProviderResult: ...
 
 
 def make_candidate(url, source, identity, metadata, access_basis, version=None, license=None):
