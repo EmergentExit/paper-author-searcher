@@ -7,21 +7,24 @@ import os
 import re
 import tempfile
 import unicodedata
+from collections.abc import Callable, Iterable, Sequence
 from copy import deepcopy
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from .config import DEFAULT_DOWNLOAD, DEFAULT_STORAGE
+from .config import DEFAULT_DOWNLOAD, DEFAULT_STORAGE, DownloadConfig, StorageConfig
+from .http import DownloadReceipt, HttpTransport
+from .json_types import JSONList, JSONObject
 from .jsonio import COMPACT_SEPARATORS
 from .logging_config import log_isolated_failure
 from .manifest_journal import ManifestJournal, journal_path, replay
 from .matching import canonical_doi, normalize
-from .models import PaperDownloadResult
+from .models import PaperDownloadResult, PDFFileValidation
 from .paper_views import extend_history
 from .pdf_document_types import NON_FULL_DOCUMENTS
-from .pdf_file_validation import PDFFileValidator, validation_target
+from .pdf_file_validation import FileValidator, PDFFileValidator, validation_target
 from .pdf_identity import native_id
 from .pdf_search_status import search_satisfaction
 from .performance_diagnostics import pdf_failure_reasons
@@ -40,7 +43,10 @@ logger = logging.getLogger(__name__)
 # Files whose content identity is unconfirmed or contradicted are kept apart from verified downloads.
 REVIEW_FOLDER = 'needs_review'
 QUARANTINE_FOLDER = 'quarantine'
-IDENTITY_FOLDERS = {IdentityStatus.NEEDS_REVIEW: REVIEW_FOLDER, IdentityStatus.REJECTED: QUARANTINE_FOLDER}
+IDENTITY_FOLDERS: dict[str, str] = {
+    IdentityStatus.NEEDS_REVIEW: REVIEW_FOLDER,
+    IdentityStatus.REJECTED: QUARANTINE_FOLDER,
+}
 # Marks a candidate no metadata ties to the paper: its file is kept only if its own content confirms the paper.
 CONTENT_ONLY = 'content_only'
 
@@ -49,7 +55,7 @@ CONTENT_ONLY = 'content_only'
 MAXIMUM_MANIFEST_PATH_PARTS = 2
 
 
-def _content_confirms(validation):
+def _content_confirms(validation: PDFFileValidation) -> bool:
     return (
         validation.identity_status == IdentityStatus.VERIFIED
         and validation.validation_status == PDFValidationStatus.VERIFIED
@@ -57,7 +63,7 @@ def _content_confirms(validation):
     )
 
 
-def paper_key(paper):
+def paper_key(paper: JSONObject) -> str:
     identity: str | None | list[Any]
     if paper.get('doi'):
         identity = canonical_doi(paper['doi'])
@@ -73,7 +79,7 @@ def paper_key(paper):
     return hashlib.sha256(encoded).hexdigest()
 
 
-def paper_filename(paper, config=DEFAULT_DOWNLOAD):
+def paper_filename(paper: JSONObject, config: DownloadConfig = DEFAULT_DOWNLOAD) -> str:
     title = unicodedata.normalize('NFKC', paper.get('title') or 'untitled')
     title = ''.join('_' if unicodedata.category(character) in ('Cc', 'Cf', 'Cs') else character for character in title)
     title = re.sub(r'[<>:"/\\|?*\x00-\x1f\x7f]', '_', title)
@@ -85,13 +91,13 @@ def paper_filename(paper, config=DEFAULT_DOWNLOAD):
     return _bounded_filename(prefix, suffix, config.filename_bytes)
 
 
-def _bounded_filename(prefix, suffix, maximum_bytes):
+def _bounded_filename(prefix: str, suffix: str, maximum_bytes: int) -> str:
     available = maximum_bytes - len(suffix.encode('utf-8'))
     prefix = prefix.encode('utf-8')[:available].decode('utf-8', errors='ignore').rstrip(' ._')
     return prefix + suffix
 
 
-def file_digest(path, config=DEFAULT_DOWNLOAD):
+def file_digest(path: Path, config: DownloadConfig = DEFAULT_DOWNLOAD) -> tuple[int, str]:
     digest = hashlib.sha256()
     size = 0
     with path.open('rb') as handle:
@@ -107,7 +113,13 @@ def file_digest(path, config=DEFAULT_DOWNLOAD):
 
 
 class PDFDownloader:
-    def __init__(self, client, validator=None, config=DEFAULT_DOWNLOAD, storage=DEFAULT_STORAGE) -> None:
+    def __init__(
+        self,
+        client: HttpTransport,
+        validator: FileValidator | None = None,
+        config: DownloadConfig = DEFAULT_DOWNLOAD,
+        storage: StorageConfig = DEFAULT_STORAGE,
+    ) -> None:
         self.client = client
         self.validator = validator or PDFFileValidator(config)
         self.config = config
@@ -115,13 +127,13 @@ class PDFDownloader:
 
     def download(
         self,
-        saved_result,
-        output_dir,
+        saved_result: JSONObject,
+        output_dir: str | Path,
         include_needs_review: bool = False,
-        maximum_downloads=None,
-        manifest_path=None,
-        progress=None,
-    ):
+        maximum_downloads: int | None = None,
+        manifest_path: str | Path | None = None,
+        progress: Callable[..., Any] | None = None,
+    ) -> JSONObject:
         if maximum_downloads is not None and maximum_downloads < 1:
             raise ValueError('maximum_downloads must be positive')
         papers = saved_result.get('papers')
@@ -184,7 +196,7 @@ class PDFDownloader:
             journal.discard()
         return manifest
 
-    def _new_record(self, paper, previous_by_key):
+    def _new_record(self, paper: JSONObject, previous_by_key: dict[str, Any]) -> PaperDownloadResult:
         key = paper_key(paper)
         record = PaperDownloadResult(
             key,
@@ -208,7 +220,9 @@ class PDFDownloader:
             record.history = extend_history(last)
         return record
 
-    def _eligible_candidates(self, paper, record, include_needs_review):
+    def _eligible_candidates(
+        self, paper: JSONObject, record: PaperDownloadResult, include_needs_review: bool
+    ) -> JSONList:
         allowed = {OwnershipStatus.VERIFIED}
         if include_needs_review:
             allowed.add(OwnershipStatus.NEEDS_REVIEW)
@@ -235,7 +249,7 @@ class PDFDownloader:
             record.download_status = DownloadStatus.SKIPPED_UNVERIFIED_URL
         return candidates
 
-    def _unbound_candidates(self, paper, seen_urls):
+    def _unbound_candidates(self, paper: JSONObject, seen_urls: set[str]) -> JSONList:
         """Public PDFs that no metadata ties to the paper, tried last: only their content can (``CONTENT_ONLY``)."""
         unbound = []
         for candidate in paper.get('pdf_candidates') or []:
@@ -252,11 +266,18 @@ class PDFDownloader:
                 unbound.append(dict(candidate, url=url, final_url=None, **{CONTENT_ONLY: True}))
         return unbound[: self.config.maximum_content_checks]
 
-    def _reuse_existing(self, root, paper, record, entries, candidates=()) -> bool:
+    def _reuse_existing(
+        self,
+        root: Path,
+        paper: JSONObject,
+        record: PaperDownloadResult,
+        entries: JSONList,
+        candidates: Sequence[JSONObject] = (),
+    ) -> bool:
         possible = list(entries)
         filename = paper_filename(paper, self.config)
         for folder in ('', REVIEW_FOLDER, QUARANTINE_FOLDER):
-            relative = str(PurePosixPath(folder) / filename)
+            relative: str | None = str(PurePosixPath(folder) / filename)
             possible.append({'local_filename': relative})
         seen_paths = set()
         for entry in possible:
@@ -310,7 +331,14 @@ class PDFDownloader:
                 record.error_details.append(str(exc))
         return False
 
-    def _download_paper(self, root, paper, record, candidates, known_files):
+    def _download_paper(
+        self,
+        root: Path,
+        paper: JSONObject,
+        record: PaperDownloadResult,
+        candidates: Iterable[JSONObject],
+        known_files: dict[str, Any],
+    ) -> None:
         rejected = None
         non_full = None
         unconfirmed = None
@@ -324,7 +352,7 @@ class PDFDownloader:
             record.source = paper.get('source') or record.pdf_source
             record.file_size, record.sha256 = None, None
             record.validation = {}
-            record.format_status, record.identity_status = 'not_checked', 'not_checked'
+            record.format_status, record.identity_status = FormatStatus.NOT_CHECKED, IdentityStatus.NOT_CHECKED
             record.validation_status = PDFValidationStatus.NOT_CHECKED
             attempt = {
                 'url': url,
@@ -409,7 +437,16 @@ class PDFDownloader:
             elif record.format_status == FormatStatus.UNVERIFIED:
                 record.validation_status = PDFValidationStatus.UNVERIFIED
 
-    def _record_completed(self, record, paper, candidate, receipt, validation, relative, duplicate) -> None:
+    def _record_completed(
+        self,
+        record: PaperDownloadResult,
+        paper: JSONObject,
+        candidate: JSONObject,
+        receipt: DownloadReceipt,
+        validation: PDFFileValidation,
+        relative: str | None,
+        duplicate: str | None,
+    ) -> None:
         self._apply_validation(record, validation)
         record.file_size, record.sha256 = receipt.file_size, receipt.sha256
         record.pdf_url = candidate.get('final_url') or candidate['url']
@@ -424,14 +461,14 @@ class PDFDownloader:
         record.duplicate_of = duplicate
         record.download_status = DownloadStatus.DUPLICATE_CONTENT if duplicate else DownloadStatus.DOWNLOADED
 
-    def _apply_validation(self, record, validation) -> None:
+    def _apply_validation(self, record: PaperDownloadResult, validation: PDFFileValidation) -> None:
         record.validation = asdict(validation)
         record.validation_status = validation.validation_status
         record.format_status = validation.format_status
         record.document_type = validation.document_type
         record.identity_status = validation.identity_status
 
-    def _duplicate_file(self, root, digest, known_files):
+    def _duplicate_file(self, root: Path, digest: str, known_files: dict[str, Any]) -> str | None:
         relative = known_files.get(digest)
         if not relative:
             return None
@@ -443,7 +480,7 @@ class PDFDownloader:
             pass
         return None
 
-    def _safe_path(self, root, relative):
+    def _safe_path(self, root: Path, relative: str) -> Path:
         if not isinstance(relative, str) or '\\' in relative:
             raise ValueError('Unsafe manifest filename')
         parts = PurePosixPath(relative).parts
@@ -456,7 +493,9 @@ class PDFDownloader:
             raise ValueError('Manifest path escapes the output folder or follows a symlink')
         return path
 
-    def _store_file(self, root, temporary, paper, identity_status, filename=None):
+    def _store_file(
+        self, root: Path, temporary: Path, paper: JSONObject, identity_status: str, filename: str | None = None
+    ) -> str:
         folder = IDENTITY_FOLDERS.get(identity_status, '')
         filename = filename or paper_filename(paper, self.config)
         relative = str(PurePosixPath(folder) / filename)
@@ -487,8 +526,8 @@ class PDFDownloader:
             raise
         return destination.relative_to(root).as_posix()
 
-    def _organize_confirmed_files(self, root, results, retained) -> None:
-        references: dict[str, Any] = {}
+    def _organize_confirmed_files(self, root: Path, results: list[PaperDownloadResult], retained: JSONList) -> None:
+        references: dict[str, list[Any]] = {}
         for record in results:
             if record.local_filename:
                 references.setdefault(record.local_filename, []).append(record)
@@ -500,6 +539,7 @@ class PDFDownloader:
                 continue
             confirmed = True
             for entry in entries:
+                status: object
                 if isinstance(entry, PaperDownloadResult):
                     status = entry.validation_status
                 else:
@@ -510,8 +550,8 @@ class PDFDownloader:
             if not confirmed:
                 continue
             path = self._safe_path(root, relative)
-            record = next((entry for entry in entries if isinstance(entry, PaperDownloadResult)), None)
-            if record is None or not path.is_file():
+            current = any(isinstance(entry, PaperDownloadResult) for entry in entries)
+            if not current or not path.is_file():
                 continue
             new_relative = self._store_file(
                 root, path, {}, IdentityStatus.VERIFIED, filename=PurePosixPath(relative).name
@@ -526,7 +566,7 @@ class PDFDownloader:
                     if entry.get('duplicate_of') == relative:
                         entry['duplicate_of'] = new_relative
 
-    def _load_manifest(self, root, manifest_path=None):
+    def _load_manifest(self, root: Path, manifest_path: Path | None = None) -> JSONObject:
         path = manifest_path if manifest_path is not None else root / 'manifest.json'
         if path.is_symlink():
             raise ValueError('Manifest must not be a symlink')
@@ -544,7 +584,16 @@ class PDFDownloader:
         # A run that died between snapshots left its per-paper progress in the journal.
         return replay(saved, ManifestJournal(journal_path(path)).entries())
 
-    def _save_manifest(self, root, results, retained, attempted, complete, previous, manifest_path=None):
+    def _save_manifest(
+        self,
+        root: Path,
+        results: list[PaperDownloadResult],
+        retained: JSONList,
+        attempted: int,
+        complete: bool,
+        previous: JSONObject,
+        manifest_path: Path | None = None,
+    ) -> JSONObject:
         manifest_path = manifest_path if manifest_path is not None else root / 'manifest.json'
         if manifest_path.is_symlink():
             raise ValueError('Manifest must not be a symlink')
@@ -555,7 +604,7 @@ class PDFDownloader:
             satisfied, reason = search_satisfaction(asdict(record), integrity_checked)
             record.search_sufficiently_satisfied = satisfied
             record.search_satisfaction_reason = reason
-        statistics = {
+        statistics: dict[str, Any] = {
             'total_input_papers': len(results),
             'attempted_papers': attempted,
             'downloaded_files': sum(record.download_status == DownloadStatus.DOWNLOADED for record in results),
@@ -593,8 +642,9 @@ class PDFDownloader:
                 for record in results
             ),
         }
-        if isinstance(getattr(self.client, 'transport_statistics', None), dict):
-            statistics['http_transport_statistics'] = deepcopy(self.client.transport_statistics)
+        transport_statistics = getattr(self.client, 'transport_statistics', None)
+        if isinstance(transport_statistics, dict):
+            statistics['http_transport_statistics'] = deepcopy(transport_statistics)
         manifest = {
             'schema_version': 1,
             'created_at': previous.get('created_at', now),

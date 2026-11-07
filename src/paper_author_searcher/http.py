@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 T = TypeVar('T')
 
 
-class HttpTransport(Protocol):
-    """What services ask of an HTTP client: ``HttpClient`` and every layer the composition root wraps around it."""
+class MetadataReader(Protocol):
+    """Reads one metadata document: the HTTP client, or a local index that answers the same URLs (DBLP dump)."""
 
     def get(
         self,
@@ -41,6 +41,10 @@ class HttpTransport(Protocol):
         headers: dict[str, str] | None = None,
         xml: bool = False,
     ) -> Any: ...
+
+
+class HttpTransport(MetadataReader, Protocol):
+    """What services ask of an HTTP client: ``HttpClient`` and every layer the composition root wraps around it."""
 
     def post_json(
         self,

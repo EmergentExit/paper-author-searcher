@@ -3,28 +3,41 @@
 import logging
 import threading
 import time
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from dataclasses import asdict
 from typing import Any
 from urllib.parse import urldefrag, urlsplit
 
-from .config import DEFAULT_PDF
+from .config import DEFAULT_PDF, PDFConfig
 from .http import HttpClient
+from .http_deadline import SearchDeadline
 from .http_decorators import unwrap
+from .json_types import JSONObject
 from .logging_config import log_isolated_failure
 from .matching import normalize_title
-from .models import PaperPDFResult, PDFProviderResult, PDFResolutionResult
+from .models import PaperPDFResult, PDFCandidate, PDFProviderResult, PDFResolutionResult
 from .paper_views import bibliographic_view
+from .pdf_providers import PDFProvider
 from .pdf_resource_requests import PublicResourceRequests
 from .pdf_search_status import SEARCH_COMPLETION_DEFINITION, paper_search_complete
+from .pdf_validation import PDFURLValidator
 from .performance_diagnostics import pdf_failure_reasons
 from .status import AccessStatus, IdentityStatus, OwnershipStatus, PDFValidationStatus, ProviderStatus
 
 logger = logging.getLogger(__name__)
 
 # Probe failures that say nothing about the URL itself; another probe later may succeed.
+# One paper's lookup: the paper and the result its sources fill in.
+Job = tuple[JSONObject, PaperPDFResult]
+
 TRANSIENT_ERRORS = frozenset({'source_deferred', 'timeout', 'network_error', 'server_error', 'rate_limited'})
+
+
+def _hook(provider: object, name: str) -> Callable[..., Any] | None:
+    """The optional hook ``name`` the provider's class defines (a test double answering every name defines none)."""
+    return getattr(provider, name) if callable(getattr(type(provider), name, None)) else None
 
 
 class PDFResolver:
@@ -37,13 +50,13 @@ class PDFResolver:
 
     def __init__(
         self,
-        providers,
-        validator,
+        providers: Iterable[PDFProvider],
+        validator: PDFURLValidator,
         requests: PublicResourceRequests | None = None,
-        config=DEFAULT_PDF,
-        sleep=time.sleep,
-        fallbacks=(),
-        deadline=None,
+        config: PDFConfig = DEFAULT_PDF,
+        sleep: Callable[[float], None] = time.sleep,
+        fallbacks: Iterable[PDFProvider] = (),
+        deadline: SearchDeadline | None = None,
     ) -> None:
         self.deadline = deadline
         self.providers = list(providers)
@@ -58,7 +71,13 @@ class PDFResolver:
         self._unprobed_lock = threading.Lock()
         self.retry_statistics: dict[str, Any] = {}
 
-    def resolve(self, saved_result, include_needs_review: bool = False, maximum_papers=None, progress=None):
+    def resolve(
+        self,
+        saved_result: JSONObject,
+        include_needs_review: bool = False,
+        maximum_papers: int | None = None,
+        progress: Callable[..., Any] | None = None,
+    ) -> PDFResolutionResult:
         if maximum_papers is not None and maximum_papers < 1:
             raise ValueError('maximum_papers must be positive')
         collection = saved_result.get('collection', saved_result)
@@ -109,7 +128,7 @@ class PDFResolver:
             result.failure_reasons = pdf_failure_reasons(asdict(result))
         return PDFResolutionResult(results, self._statistics(results))
 
-    def _run_lookups(self, jobs, work=None):
+    def _run_lookups(self, jobs: Sequence[tuple[Any, ...]], work: Callable[..., None] | None = None) -> Iterator[int]:
         """Resolve papers concurrently (sources keep their own per-host pacing); yield the running count.
 
         Papers still waiting when the search's time limit passes are not looked up: each source's pacing would
@@ -128,17 +147,17 @@ class PDFResolver:
                 future.result()
                 yield processed
 
-    def _out_of_time(self):
+    def _out_of_time(self) -> bool:
         return self.deadline is not None and self.deadline.expired()
 
-    def _before_deadline(self, work):
-        def guarded(*job) -> None:
+    def _before_deadline(self, work: Callable[..., None]) -> Callable[..., None]:
+        def guarded(*job: Any) -> None:
             if not self._out_of_time():
                 work(*job)
 
         return guarded
 
-    def _resolve_isolated(self, paper, result) -> None:
+    def _resolve_isolated(self, paper: JSONObject, result: PaperPDFResult) -> None:
         try:
             self._resolve_paper(paper, result)
         except Exception as exc:
@@ -148,7 +167,7 @@ class PDFResolver:
             result.validation_status = PDFValidationStatus.UNVERIFIED
             result.error_details.append({'source': 'pdf_validation', 'error': str(exc)})
 
-    def _reask_failed_sources(self, jobs):
+    def _reask_failed_sources(self, jobs: Sequence[Job]) -> dict[str, Any]:
         """Ask a source again about papers still without a link, when its lookup failed only transiently.
 
         A throttled source returns no links at all, so there is nothing for ``_retry_transient`` to probe again.
@@ -171,7 +190,9 @@ class PDFResolver:
         return stats
 
     @staticmethod
-    def _failed_source_jobs(jobs, by_name):
+    def _failed_source_jobs(
+        jobs: Sequence[Job], by_name: dict[str, PDFProvider]
+    ) -> list[tuple[JSONObject, PaperPDFResult, list[PDFProvider]]]:
         pending = []
         for paper, result in jobs:
             if result.validation_status == PDFValidationStatus.VERIFIED:
@@ -186,7 +207,7 @@ class PDFResolver:
                 pending.append((paper, result, providers))
         return pending
 
-    def _reask_isolated(self, paper, result, providers) -> None:
+    def _reask_isolated(self, paper: JSONObject, result: PaperPDFResult, providers: Sequence[PDFProvider]) -> None:
         for provider in providers:
             try:
                 found = provider.find(dict(paper, _pdf_landing_pages=[]))
@@ -203,7 +224,7 @@ class PDFResolver:
             ]
             self._add_candidates(found, paper, result)
 
-    def _add_candidates(self, found, paper, result) -> None:
+    def _add_candidates(self, found: PDFProviderResult, paper: JSONObject, result: PaperPDFResult) -> None:
         self._record_provider(result, found)
         known = {urldefrag(candidate.url)[0] for candidate in result.pdf_candidates}
         fresh = [item for item in self._merge_urls(found.candidates) if urldefrag(item.url)[0] not in known]
@@ -215,7 +236,7 @@ class PDFResolver:
             self._validate(candidate, paper, result)
         self._settle(result)
 
-    def _retry_transient(self, jobs) -> None:
+    def _retry_transient(self, jobs: Sequence[Job]) -> None:
         """Probe again, once host cooldowns expire, the identity-bound links that failed only transiently.
 
         Only papers still without a verified link take part; a definitive answer (403, 404, HTML) is final.
@@ -244,7 +265,7 @@ class PDFResolver:
             pending = self._transient_jobs([(paper, result) for paper, result, _ in pending])
         self._unprobed.clear()
 
-    def _transient_jobs(self, jobs):
+    def _transient_jobs(self, jobs: Sequence[Job]) -> list[tuple[JSONObject, PaperPDFResult, list[int]]]:
         pending = []
         for paper, result in jobs:
             if result.validation_status == PDFValidationStatus.VERIFIED or id(result) not in self._unprobed:
@@ -260,10 +281,10 @@ class PDFResolver:
         return pending
 
     @staticmethod
-    def _failed_host(candidate):
+    def _failed_host(candidate: PDFCandidate) -> str:
         return (candidate.request_context or {}).get('endpoint_host') or urlsplit(candidate.url).hostname or ''
 
-    def _retry_isolated(self, paper, result, indexes) -> None:
+    def _retry_isolated(self, paper: JSONObject, result: PaperPDFResult, indexes: Sequence[int]) -> None:
         try:
             for index in indexes:
                 stale = result.pdf_candidates[index]
@@ -278,7 +299,7 @@ class PDFResolver:
             )
 
     @staticmethod
-    def _forget(result, url) -> None:
+    def _forget(result: PaperPDFResult, url: str) -> None:
         """Drop the probe outcome recorded for this URL; the retry records its own."""
         result.warnings = [
             w for w in result.warnings if not (w.get('code') == 'source_deferred' and w.get('url') == url)
@@ -286,7 +307,7 @@ class PDFResolver:
         result.error_details = [e for e in result.error_details if not ('error_type' in e and e.get('url') == url)]
         result.candidate_decisions = [d for d in result.candidate_decisions if d.get('url') != url]
 
-    def _ask_fallbacks(self, jobs) -> None:
+    def _ask_fallbacks(self, jobs: Sequence[Job]) -> None:
         """Ask each fallback once per work still without a PDF, up to the configured number of works.
 
         Entries sharing a title are editions of one work, so the answer serves them all, and a work with a PDF under
@@ -315,14 +336,14 @@ class PDFResolver:
             pass
 
     @staticmethod
-    def _has_tied_copy(work):
+    def _has_tied_copy(work: Sequence[Job]) -> bool:
         return any(
             candidate.identity_status == IdentityStatus.VERIFIED
             for _, result in work
             for candidate in result.pdf_candidates
         )
 
-    def _ask_about_work(self, work) -> None:
+    def _ask_about_work(self, work: Sequence[Job]) -> None:
         for provider in self.fallbacks:
             try:
                 found = provider.find(work[0][0])
@@ -332,20 +353,20 @@ class PDFResolver:
             for paper, result in work:
                 self._add_candidates(found, paper, result)
 
-    def _prepare_providers(self, papers, profile=None) -> None:
+    def _prepare_providers(self, papers: Sequence[JSONObject], profile: JSONObject | None = None) -> None:
         """Each provider that prepares sees the person's resolved profile (prepare_profile), then the papers."""
         self.preparation_errors = {}
         for provider in self.providers:
             try:
-                if callable(getattr(type(provider), 'prepare_profile', None)):
-                    provider.prepare_profile(profile or {})
-                if callable(getattr(type(provider), 'prepare', None)):
-                    provider.prepare(papers)
+                if prepare_profile := _hook(provider, 'prepare_profile'):
+                    prepare_profile(profile or {})
+                if prepare := _hook(provider, 'prepare'):
+                    prepare(papers)
             except Exception as exc:
                 log_isolated_failure(logger, 'PDF provider %s preparation failed: %s', provider.name, exc)
                 self.preparation_errors[provider.name] = str(exc)
 
-    def _resolve_paper(self, paper, result) -> None:
+    def _resolve_paper(self, paper: JSONObject, result: PaperPDFResult) -> None:
         candidates = []
         lookup_paper = dict(paper, _pdf_landing_pages=[])
         for provider in self.providers:
@@ -370,7 +391,7 @@ class PDFResolver:
         self._settle(result)
 
     @staticmethod
-    def _record_provider(result, found) -> None:
+    def _record_provider(result: PaperPDFResult, found: PDFProviderResult) -> None:
         result.providers.append(
             {
                 'source': found.source,
@@ -384,10 +405,10 @@ class PDFResolver:
             result.error_details.append({'source': found.source, 'error': error})
         result.warnings.extend(dict(warning, source=found.source) for warning in found.warnings)
 
-    def _validate(self, candidate, paper, result) -> None:
+    def _validate(self, candidate: PDFCandidate, paper: JSONObject, result: PaperPDFResult) -> None:
         self.validator.validate(candidate, paper)
         for error in candidate.error_details:
-            entry = {'source': candidate.source, 'url': candidate.url, 'error': error}
+            entry: JSONObject = {'source': candidate.source, 'url': candidate.url, 'error': error}
             if candidate.query_error_type == 'source_deferred':
                 result.warnings.append(
                     dict(entry, code='source_deferred', incomplete=True, request_context=candidate.request_context)
@@ -410,7 +431,7 @@ class PDFResolver:
                     )
                 )
 
-    def _settle(self, result) -> None:
+    def _settle(self, result: PaperPDFResult) -> None:
         valid = [
             candidate
             for candidate in result.pdf_candidates
@@ -430,7 +451,7 @@ class PDFResolver:
             result.validation_status = PDFValidationStatus.NOT_FOUND
             result.access_status = AccessStatus.UNKNOWN
 
-    def _merge_urls(self, candidates):
+    def _merge_urls(self, candidates: Iterable[PDFCandidate]) -> list[PDFCandidate]:
         merged = {}
         versions: dict[str, Any] = {}
         for candidate in candidates:
@@ -456,13 +477,13 @@ class PDFResolver:
                 candidate.identity_evidence.append('Sources disagree about the version type')
         return list(merged.values())
 
-    def _version_priority(self, candidate):
+    def _version_priority(self, candidate: PDFCandidate) -> int:
         try:
             return self.config.version_preference.index(candidate.version_type)
         except ValueError:
             return len(self.config.version_preference)
 
-    def _statistics(self, papers):
+    def _statistics(self, papers: Sequence[PaperPDFResult]) -> dict[str, Any]:
         counts: dict[str, Any] = {
             'total_papers': len(papers),
             'processed_papers': 0,
@@ -534,12 +555,12 @@ class PDFResolver:
         if isinstance(http_client, HttpClient):
             counts['http_configuration'] = {'timeout': http_client.timeout, 'retries': http_client.retries}
             counts['http_transport_statistics'] = deepcopy(http_client.transport_statistics)
-        for provider in self.providers:
-            if callable(getattr(type(provider), 'request_statistics', None)):
-                counts['provider_request_statistics'][provider.name] = provider.request_statistics()
+        for pdf_source in self.providers:
+            if request_statistics := _hook(pdf_source, 'request_statistics'):
+                counts['provider_request_statistics'][pdf_source.name] = request_statistics()
         return counts
 
-    def _source_counts(self):
+    def _source_counts(self) -> dict[str, Any]:
         return {
             'candidate_urls': 0,
             'verified_urls': 0,
