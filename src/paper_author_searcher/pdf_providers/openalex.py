@@ -2,8 +2,10 @@
 
 from urllib.parse import quote
 
-from paper_author_searcher.config import DEFAULT_PDF, DEFAULT_SOURCES
-from paper_author_searcher.http import SourceError
+from paper_author_searcher.config import DEFAULT_PDF, DEFAULT_SOURCES, PDFConfig, SourceConfig
+from paper_author_searcher.http import HttpTransport, SourceError
+from paper_author_searcher.json_types import JSONList, JSONObject
+from paper_author_searcher.models import PDFCandidate
 from paper_author_searcher.pdf_identity import arxiv_id, metadata_identity, paper_dois, paper_ids, source_records
 
 from .base import MetadataPDFProvider, make_candidate
@@ -12,7 +14,7 @@ from .base import MetadataPDFProvider, make_candidate
 OPENALEX_ARXIV_LOCATION = 'pmh:oai:arxiv.org:'
 
 
-def openalex_locations(work):
+def openalex_locations(work: JSONObject) -> JSONList:
     if not isinstance(work, dict):
         raise SourceError('Malformed work metadata: expected an object')
     locations = work.get('locations') or []
@@ -27,7 +29,7 @@ def openalex_locations(work):
     return locations
 
 
-def openalex_authors(work):
+def openalex_authors(work: JSONObject) -> list[str]:
     """Author names of a saved OpenAlex work; a lookup that did not select authorships has none."""
     names = []
     for authorship in work.get('authorships') or []:
@@ -37,7 +39,7 @@ def openalex_authors(work):
     return names
 
 
-def openalex_arxiv_ids(locations):
+def openalex_arxiv_ids(locations: JSONList) -> list[str]:
     """arXiv IDs of the copies OpenAlex merged into one work ("pmh:oai:arXiv.org:2404.18021", arxiv.org URLs)."""
     identifiers: list[str] = []
     for location in locations:
@@ -49,7 +51,13 @@ def openalex_arxiv_ids(locations):
     return list(dict.fromkeys(identifiers))
 
 
-def openalex_candidates(paper, work, provider, metadata_url=None, config=DEFAULT_PDF):
+def openalex_candidates(
+    paper: JSONObject,
+    work: JSONObject,
+    provider: str,
+    metadata_url: str | None = None,
+    config: PDFConfig = DEFAULT_PDF,
+) -> list[PDFCandidate]:
     locations = openalex_locations(work)
     identity = metadata_identity(
         paper,
@@ -93,7 +101,7 @@ def openalex_candidates(paper, work, provider, metadata_url=None, config=DEFAULT
     return candidates
 
 
-def openalex_landing_pages(work):
+def openalex_landing_pages(work: JSONObject) -> JSONList:
     pages = []
     for location in openalex_locations(work):
         urls = [location.get('landing_page_url')]
@@ -118,18 +126,24 @@ class OpenAlexPDFProvider(MetadataPDFProvider):
     name = 'openalex'
     fields = 'id,doi,title,publication_year,primary_location,best_oa_location,locations'
 
-    def __init__(self, client, sources=DEFAULT_SOURCES, api_key=None, config=DEFAULT_PDF):
+    def __init__(
+        self,
+        client: HttpTransport,
+        sources: SourceConfig = DEFAULT_SOURCES,
+        api_key: str | None = None,
+        config: PDFConfig = DEFAULT_PDF,
+    ) -> None:
         super().__init__(client, sources)
         self.api_key = api_key
         self.config = config
 
-    def lookups(self, paper):
+    def lookups(self, paper: JSONObject) -> list[str]:
         identifiers = paper_ids(paper, self.name)
         if identifiers:
             return identifiers
         return ['https://doi.org/' + doi[len('doi:') :] for doi in sorted(paper_dois(paper))]
 
-    def lookup(self, paper, identifier):
+    def lookup(self, paper: JSONObject, identifier: str) -> tuple[list[PDFCandidate], JSONList]:
         url = self.sources.openalex_url + '/works/' + quote(identifier, safe=':/')
         for record in source_records(paper):
             work = record.get('raw_metadata') or {}

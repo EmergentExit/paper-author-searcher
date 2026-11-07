@@ -1,5 +1,6 @@
 """Offline evaluation of identity, retrieval, ownership and deduplication."""
 
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import asdict
 from typing import Any
 
@@ -9,13 +10,13 @@ from .status import OwnershipStatus, ResolutionStatus
 STATUSES = (OwnershipStatus.VERIFIED, OwnershipStatus.NEEDS_REVIEW, OwnershipStatus.REJECTED)
 
 
-def _ratio(numerator, denominator):
+def _ratio(numerator: float, denominator: float) -> float | None:
     if denominator == 0:
         return None
     return numerator / denominator
 
 
-def _metrics(positive, negative, total_positive):
+def _metrics(positive: Collection[Any], negative: Collection[Any], total_positive: int) -> dict[str, Any]:
     true_positives = len(positive)
     false_positives = len(negative)
     false_negatives = total_positive - true_positives
@@ -32,11 +33,11 @@ def _metrics(positive, negative, total_positive):
     }
 
 
-def _choose_two(count):
+def _choose_two(count: int) -> int:
     return count * (count - 1) // 2
 
 
-def _paper_summary(paper, index):
+def _paper_summary(paper: dict[str, Any], index: int) -> dict[str, Any]:
     fields = (
         'title',
         'year',
@@ -50,7 +51,7 @@ def _paper_summary(paper, index):
         'deduplication_evidence',
         'related_versions',
     )
-    summary = {key: paper.get(key) for key in fields}
+    summary: dict[str, Any] = {key: paper.get(key) for key in fields}
     summary['entry_index'] = index
     summary['source_records'] = []
     for record in paper.get('records') or [paper]:
@@ -68,7 +69,7 @@ def _paper_summary(paper, index):
 
 
 class Evaluator:
-    def evaluate(self, saved_result, ground_truth):
+    def evaluate(self, saved_result: object, ground_truth: GroundTruth | dict[str, Any]) -> dict[str, Any]:
         if not isinstance(saved_result, dict):
             raise ValueError('Saved result must be an object')
         if isinstance(ground_truth, dict):
@@ -163,7 +164,7 @@ class Evaluator:
         }
         return report
 
-    def _resolver_only(self, saved_result, ground_truth):
+    def _resolver_only(self, saved_result: dict[str, Any], ground_truth: GroundTruth) -> dict[str, Any]:
         return {
             'schema_version': 1,
             'professor_resolver': self._evaluate_professor(saved_result, ground_truth.professor),
@@ -179,7 +180,9 @@ class Evaluator:
             'notes': ['No collection supplied; publication metrics were not evaluated.'],
         }
 
-    def _match_entries(self, papers, matcher):
+    def _match_entries(
+        self, papers: Sequence[Any], matcher: GroundTruthMatcher
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         entries = []
         review = []
         for index, paper in enumerate(papers):
@@ -245,7 +248,7 @@ class Evaluator:
         return entries, review
 
     @staticmethod
-    def _false_positives(entries, negatives):
+    def _false_positives(entries: Iterable[dict[str, Any]], negatives: Any) -> list[dict[str, Any]]:
         output = []
         for entry in entries:
             if entry['status'] != OwnershipStatus.VERIFIED:
@@ -264,7 +267,9 @@ class Evaluator:
         return output
 
     @staticmethod
-    def _false_negatives(missing, entries, matcher, scope):
+    def _false_negatives(
+        missing: Iterable[str], entries: Sequence[dict[str, Any]], matcher: GroundTruthMatcher, scope: str
+    ) -> list[dict[str, Any]]:
         output = []
         for evaluation_id in sorted(missing):
             retrieved = []
@@ -290,7 +295,7 @@ class Evaluator:
         return output
 
     @staticmethod
-    def _deduplication(entries):
+    def _deduplication(entries: Sequence[dict[str, Any]]) -> dict[str, Any]:
         locations: dict[str, Any] = {}
         true_pairs = 0
         false_pairs = 0
@@ -342,7 +347,7 @@ class Evaluator:
         }
 
     @staticmethod
-    def _evaluate_professor(saved, annotation):
+    def _evaluate_professor(saved: dict[str, Any], annotation: dict[str, Any] | None) -> dict[str, Any]:
         if not annotation or not (annotation.get('author_ids') or annotation.get('orcid')):
             return {'available': False, 'reason': 'No human-verified professor Author IDs supplied'}
         profile = saved.get('profile') or saved

@@ -3,11 +3,13 @@
 import logging
 import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
+from collections.abc import Iterable, Mapping
 from typing import Any, ClassVar, Protocol
 
 from .config import DEFAULT_COLLECTION, CollectionConfig
 from .dblp_format import arxiv_ids, base_name, plain_title
 from .http import SourceError
+from .json_types import JSONObject
 from .logging_config import log_isolated_failure
 from .matching import canonical_doi
 from .models import PaperRecord, PaperSourceResult
@@ -24,20 +26,20 @@ class PaperProvider(Protocol):
     def collect(self, author_id: str) -> PaperSourceResult: ...
 
 
-def doi_value(value):
+def doi_value(value: str | None) -> str | None:
     if value:
         return canonical_doi(value)[len('doi:') :]
     return None
 
 
-def text_content(element, path):
+def text_content(element: ET.Element, path: str) -> str | None:
     node = element.find(path)
     if node is None:
         return None
     return ''.join(node.itertext()).strip() or None
 
 
-def parse_year(value):
+def parse_year(value: Any) -> int | None:
     if value is None:
         return None
     try:
@@ -46,10 +48,10 @@ def parse_year(value):
         return None
 
 
-def reconstruct_abstract(index):
+def reconstruct_abstract(index: Mapping[str, Iterable[int]] | None) -> str | None:
     if not index:
         return None
-    words = {}
+    words: dict[int, str] = {}
     for word, positions in index.items():
         for position in positions:
             words[position] = word
@@ -74,7 +76,7 @@ class PagedPaperProvider(ABC):
     def _parse_paper(self, item: Any, author_id: str) -> PaperRecord:
         """Convert one raw record into a ``PaperRecord``; raise to reject it."""
 
-    def collect(self, author_id):
+    def collect(self, author_id: str) -> PaperSourceResult:
         result = PaperSourceResult(source=self.name, author_id=author_id)
         token = self.initial_token
         visited = set()
@@ -99,7 +101,7 @@ class PagedPaperProvider(ABC):
             result.error = str(exc)
         return result
 
-    def _add_records(self, result, records, author_id):
+    def _add_records(self, result: PaperSourceResult, records: Iterable[Any], author_id: str) -> None:
         for item in records:
             result.records_received += 1
             try:
@@ -131,11 +133,11 @@ class OpenAlexPaperProvider(PagedPaperProvider):
         'abstract_inverted_index,type,ids,is_authors_truncated,primary_topic'
     )
 
-    def __init__(self, provider: OpenAlexProvider, config=DEFAULT_COLLECTION):
+    def __init__(self, provider: OpenAlexProvider, config: CollectionConfig = DEFAULT_COLLECTION) -> None:
         self.provider = provider
         self.config = config
 
-    def _fetch_page(self, author_id, token):
+    def _fetch_page(self, author_id: str, token: Any) -> tuple[list[Any], Any]:
         data = self.provider.client.get(
             self.provider.base_url + '/works',
             {
@@ -150,11 +152,11 @@ class OpenAlexPaperProvider(PagedPaperProvider):
             raise SourceError('Malformed OpenAlex pagination response')
         return data['results'], data['meta']['next_cursor']
 
-    def parse_work(self, item, author_id):
+    def parse_work(self, item: JSONObject, author_id: str) -> PaperRecord:
         """One OpenAlex work as a record of ``author_id`` (used for works fetched outside author paging)."""
         return self._parse_paper(item, author_id)
 
-    def _parse_paper(self, item, author_id):
+    def _parse_paper(self, item: JSONObject, author_id: str) -> PaperRecord:
         item, errors = self._expand_authors(item)
         authors = []
         details = []
@@ -210,7 +212,7 @@ class OpenAlexPaperProvider(PagedPaperProvider):
             metadata_errors=errors,
         )
 
-    def _expand_authors(self, item):
+    def _expand_authors(self, item: JSONObject) -> tuple[JSONObject, list[str]]:
         if not item.get('is_authors_truncated'):
             return item, []
         if not self.config.expand_truncated_openalex_authors:
@@ -245,11 +247,11 @@ class SemanticScholarPaperProvider(PagedPaperProvider):
     FIELDS = 'title,authors,year,externalIds,venue,abstract,url,publicationTypes,openAccessPdf'
     AUTHOR_FIELDS = 'name,externalIds,affiliations'
 
-    def __init__(self, provider: SemanticScholarProvider, config=DEFAULT_COLLECTION):
+    def __init__(self, provider: SemanticScholarProvider, config: CollectionConfig = DEFAULT_COLLECTION) -> None:
         self.provider = provider
         self.config = config
 
-    def collect(self, author_id):
+    def collect(self, author_id: str) -> PaperSourceResult:
         result = super().collect(author_id)
         if not result.papers or not self.config.semantic_scholar_author_identity:
             return result
@@ -273,12 +275,12 @@ class SemanticScholarPaperProvider(PagedPaperProvider):
             result.complete = False
         return result
 
-    def _headers(self):
+    def _headers(self) -> dict[str, str]:
         if self.provider.api_key:
             return {'x-api-key': self.provider.api_key}
         return {}
 
-    def _attach_identity(self, papers, author_id, metadata):
+    def _attach_identity(self, papers: Iterable[PaperRecord], author_id: str, metadata: JSONObject) -> None:
         for paper in papers:
             for detail in paper.author_details:
                 if canonical_author_id(self.name, detail.get('author_id')) != str(author_id):
@@ -294,7 +296,7 @@ class SemanticScholarPaperProvider(PagedPaperProvider):
                 detail['profile_affiliations'] = metadata.get('affiliations') or []
 
     @staticmethod
-    def _orcids(external_ids):
+    def _orcids(external_ids: JSONObject) -> list[str]:
         value = external_ids.get('ORCID') or external_ids.get('orcid')
         if isinstance(value, str):
             return [value]
@@ -302,11 +304,11 @@ class SemanticScholarPaperProvider(PagedPaperProvider):
             return [item for item in value if isinstance(item, str) and item]
         return []
 
-    def parse_work(self, item, author_id):
+    def parse_work(self, item: JSONObject, author_id: str) -> PaperRecord:
         """One Semantic Scholar paper as a record of ``author_id`` (used for papers fetched outside author paging)."""
         return self._parse_paper(item, author_id)
 
-    def _fetch_page(self, author_id, token):
+    def _fetch_page(self, author_id: str, token: Any) -> tuple[list[Any], Any]:
         data = self.provider.client.get(
             self.provider.base_url + '/author/' + author_id + '/papers',
             {'offset': token, 'limit': self.config.semantic_scholar_page_size, 'fields': self.FIELDS},
@@ -319,7 +321,7 @@ class SemanticScholarPaperProvider(PagedPaperProvider):
             raise SourceError('Invalid Semantic Scholar continuation offset')
         return data['data'], next_token
 
-    def _parse_paper(self, item, author_id):
+    def _parse_paper(self, item: JSONObject, author_id: str) -> PaperRecord:
         authors = []
         for author in item.get('authors') or []:
             if author.get('name'):
@@ -367,10 +369,10 @@ class SemanticScholarPaperProvider(PagedPaperProvider):
 class DBLPPaperProvider:
     name = 'dblp'
 
-    def __init__(self, provider: DBLPProvider):
+    def __init__(self, provider: DBLPProvider) -> None:
         self.provider = provider
 
-    def collect(self, author_id):
+    def collect(self, author_id: str) -> PaperSourceResult:
         result = PaperSourceResult(source=self.name, author_id=author_id)
         try:
             root = self.provider.client.get(
@@ -399,7 +401,7 @@ class DBLPPaperProvider:
             result.error = str(exc)
         return result
 
-    def _add_record(self, result, container, author_id):
+    def _add_record(self, result: PaperSourceResult, container: ET.Element, author_id: str) -> None:
         result.records_received += 1
         record = next(iter(container), None)
         if record is None:
