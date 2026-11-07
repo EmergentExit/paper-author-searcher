@@ -3,6 +3,7 @@
 import dataclasses
 import unittest
 
+from paper_author_searcher.collection.arxiv_api import ArxivApi
 from paper_author_searcher.collection.contender_adjudication import DepartmentAdjudicator
 from paper_author_searcher.collection.listed_works import (
     RETRIEVED_EVIDENCE,
@@ -131,7 +132,9 @@ class RetrievalTests(unittest.TestCase):
     def test_the_chain_falls_through_to_crossref_and_arxiv(self):
         feed = FeedClient()
         crossref = CrossrefWorkLookup(feed, 'https://api.crossref.org', ListedWorksConfig(), AuthorMatcher())
-        arxiv = ArxivWorkLookup(feed, 'https://export.arxiv.org/api/query', ListedWorksConfig(), AuthorMatcher())
+        arxiv = ArxivWorkLookup(
+            ArxivApi(feed, 'https://export.arxiv.org/api/query'), ListedWorksConfig(), AuthorMatcher()
+        )
         chain = retriever({}, crossref, arxiv)
         result = chain.retrieve(profile(['title:publisher only study', 'title:preprint only study']), [])
         by_source = {record.source: record for record in result.papers}
