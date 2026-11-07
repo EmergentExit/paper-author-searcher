@@ -160,7 +160,9 @@ class CompositionTests(unittest.TestCase):
         openalex, semantic_scholar, _dblp = workflow.resolver.providers
         self.assertEqual((openalex.api_key, semantic_scholar.api_key), ('openalex-key', 'semantic-key'))
         anchors = workflow.resolver.anchor_finder
-        self.assertEqual((anchors.openalex_key, anchors.semantic_scholar_key), ('openalex-key', 'semantic-key'))
+        self.assertEqual(
+            (anchors.papers.openalex_key, anchors.papers.semantic_scholar_key), ('openalex-key', 'semantic-key')
+        )
         pdf = {provider.name: provider for provider in workflow.pdf_resolver.providers}
         self.assertEqual(pdf['openalex'].api_key, 'openalex-key')
         self.assertEqual(pdf['semantic_scholar'].api_key, 'semantic-key')
