@@ -2,15 +2,25 @@
 
 import ipaddress
 import socket
-from http.client import HTTPConnection, HTTPSConnection
+from collections.abc import Callable, Collection, Sequence
+from http.client import HTTPConnection, HTTPResponse, HTTPSConnection
+from typing import Any
 from urllib.parse import urlsplit
-from urllib.request import HTTPHandler, HTTPSHandler, ProxyHandler, build_opener
+from urllib.request import (
+    BaseHandler,
+    HTTPHandler,
+    HTTPSHandler,
+    OpenerDirector,
+    ProxyHandler,
+    Request,
+    build_opener,
+)
 
 # urllib's sentinel meaning "use the socket module's global default timeout".
 DEFAULT_SOCKET_TIMEOUT = getattr(socket, '_GLOBAL_DEFAULT_TIMEOUT', None)
 
 
-def is_public_address(value):
+def is_public_address(value: str) -> bool:
     address = ipaddress.ip_address(value)
     if not address.is_global or address.is_multicast or address.is_reserved:
         return False
@@ -24,7 +34,7 @@ def is_public_address(value):
     return not (teredo is not None and not all(is_public_address(str(endpoint)) for endpoint in teredo))
 
 
-def public_addresses(url, allowed_ports):
+def public_addresses(url: str, allowed_ports: Collection[int]) -> list[str]:
     parsed = urlsplit(url)
     port = parsed.port or (443 if parsed.scheme == 'https' else 80)
     if port not in allowed_ports:
@@ -38,12 +48,14 @@ def public_addresses(url, allowed_ports):
     return addresses
 
 
-def pinned_connection(connection_type, addresses):
-    def create_connection(host, **kwargs):
+def pinned_connection(connection_type: type[HTTPConnection], addresses: Sequence[str]) -> Callable[..., HTTPConnection]:
+    def create_connection(host: str, **kwargs: Any) -> HTTPConnection:
         connection = connection_type(host, **kwargs)
 
-        def connect_address(destination, timeout=DEFAULT_SOCKET_TIMEOUT, source_address=None):
-            last_error = None
+        def connect_address(
+            destination: tuple[str, int], timeout: Any = DEFAULT_SOCKET_TIMEOUT, source_address: Any = None
+        ) -> socket.socket:
+            last_error: OSError | None = None
             for address in addresses:
                 try:
                     return socket.create_connection((address, destination[1]), timeout, source_address)
@@ -52,28 +64,28 @@ def pinned_connection(connection_type, addresses):
             raise last_error or OSError('No public address available for ' + str(destination[0]))
 
         # HTTPConnection still sends the original Host; HTTPSConnection retains its SNI/TLS checks.
-        connection._create_connection = connect_address
+        connection._create_connection = connect_address  # type: ignore[attr-defined]
         return connection
 
     return create_connection
 
 
 class PublicHTTPHandler(HTTPHandler):
-    def __init__(self, allowed_ports):
+    def __init__(self, allowed_ports: Collection[int]) -> None:
         super().__init__()
         self.allowed_ports = allowed_ports
 
-    def http_open(self, request):
+    def http_open(self, request: Request) -> HTTPResponse:
         addresses = public_addresses(request.full_url, self.allowed_ports)
         return self.do_open(pinned_connection(HTTPConnection, addresses), request)
 
 
 class PublicHTTPSHandler(HTTPSHandler):
-    def __init__(self, allowed_ports):
+    def __init__(self, allowed_ports: Collection[int]) -> None:
         super().__init__()
         self.allowed_ports = allowed_ports
 
-    def https_open(self, request):
+    def https_open(self, request: Request) -> HTTPResponse:
         addresses = public_addresses(request.full_url, self.allowed_ports)
         # Hostname verification lives in the SSL context; Python 3.12 removed HTTPSConnection's check_hostname.
         return self.do_open(
@@ -81,7 +93,7 @@ class PublicHTTPSHandler(HTTPSHandler):
         )
 
 
-def secure_download_opener(redirect_handler, allowed_ports):
+def secure_download_opener(redirect_handler: BaseHandler, allowed_ports: Collection[int]) -> OpenerDirector:
     # Environmental proxies would resolve/tunnel destinations outside the checked connection path.
     return build_opener(
         ProxyHandler({}), PublicHTTPHandler(allowed_ports), PublicHTTPSHandler(allowed_ports), redirect_handler

@@ -44,7 +44,7 @@ class PDFResolver:
         sleep=time.sleep,
         fallbacks=(),
         deadline=None,
-    ):
+    ) -> None:
         self.deadline = deadline
         self.providers = list(providers)
         self.fallbacks = list(fallbacks)
@@ -58,7 +58,7 @@ class PDFResolver:
         self._unprobed_lock = threading.Lock()
         self.retry_statistics: dict[str, Any] = {}
 
-    def resolve(self, saved_result, include_needs_review=False, maximum_papers=None, progress=None):
+    def resolve(self, saved_result, include_needs_review: bool = False, maximum_papers=None, progress=None):
         if maximum_papers is not None and maximum_papers < 1:
             raise ValueError('maximum_papers must be positive')
         collection = saved_result.get('collection', saved_result)
@@ -132,13 +132,13 @@ class PDFResolver:
         return self.deadline is not None and self.deadline.expired()
 
     def _before_deadline(self, work):
-        def guarded(*job):
+        def guarded(*job) -> None:
             if not self._out_of_time():
                 work(*job)
 
         return guarded
 
-    def _resolve_isolated(self, paper, result):
+    def _resolve_isolated(self, paper, result) -> None:
         try:
             self._resolve_paper(paper, result)
         except Exception as exc:
@@ -186,7 +186,7 @@ class PDFResolver:
                 pending.append((paper, result, providers))
         return pending
 
-    def _reask_isolated(self, paper, result, providers):
+    def _reask_isolated(self, paper, result, providers) -> None:
         for provider in providers:
             try:
                 found = provider.find(dict(paper, _pdf_landing_pages=[]))
@@ -203,7 +203,7 @@ class PDFResolver:
             ]
             self._add_candidates(found, paper, result)
 
-    def _add_candidates(self, found, paper, result):
+    def _add_candidates(self, found, paper, result) -> None:
         self._record_provider(result, found)
         known = {urldefrag(candidate.url)[0] for candidate in result.pdf_candidates}
         fresh = [item for item in self._merge_urls(found.candidates) if urldefrag(item.url)[0] not in known]
@@ -215,7 +215,7 @@ class PDFResolver:
             self._validate(candidate, paper, result)
         self._settle(result)
 
-    def _retry_transient(self, jobs):
+    def _retry_transient(self, jobs) -> None:
         """Probe again, once host cooldowns expire, the identity-bound links that failed only transiently.
 
         Only papers still without a verified link take part; a definitive answer (403, 404, HTML) is final.
@@ -263,7 +263,7 @@ class PDFResolver:
     def _failed_host(candidate):
         return (candidate.request_context or {}).get('endpoint_host') or urlsplit(candidate.url).hostname or ''
 
-    def _retry_isolated(self, paper, result, indexes):
+    def _retry_isolated(self, paper, result, indexes) -> None:
         try:
             for index in indexes:
                 stale = result.pdf_candidates[index]
@@ -278,7 +278,7 @@ class PDFResolver:
             )
 
     @staticmethod
-    def _forget(result, url):
+    def _forget(result, url) -> None:
         """Drop the probe outcome recorded for this URL; the retry records its own."""
         result.warnings = [
             w for w in result.warnings if not (w.get('code') == 'source_deferred' and w.get('url') == url)
@@ -286,7 +286,7 @@ class PDFResolver:
         result.error_details = [e for e in result.error_details if not ('error_type' in e and e.get('url') == url)]
         result.candidate_decisions = [d for d in result.candidate_decisions if d.get('url') != url]
 
-    def _ask_fallbacks(self, jobs):
+    def _ask_fallbacks(self, jobs) -> None:
         """Ask each fallback once per work still without a PDF, up to the configured number of works.
 
         Entries sharing a title are editions of one work, so the answer serves them all, and a work with a PDF under
@@ -322,7 +322,7 @@ class PDFResolver:
             for candidate in result.pdf_candidates
         )
 
-    def _ask_about_work(self, work):
+    def _ask_about_work(self, work) -> None:
         for provider in self.fallbacks:
             try:
                 found = provider.find(work[0][0])
@@ -332,7 +332,7 @@ class PDFResolver:
             for paper, result in work:
                 self._add_candidates(found, paper, result)
 
-    def _prepare_providers(self, papers, profile=None):
+    def _prepare_providers(self, papers, profile=None) -> None:
         """Each provider that prepares sees the person's resolved profile (prepare_profile), then the papers."""
         self.preparation_errors = {}
         for provider in self.providers:
@@ -345,7 +345,7 @@ class PDFResolver:
                 log_isolated_failure(logger, 'PDF provider %s preparation failed: %s', provider.name, exc)
                 self.preparation_errors[provider.name] = str(exc)
 
-    def _resolve_paper(self, paper, result):
+    def _resolve_paper(self, paper, result) -> None:
         candidates = []
         lookup_paper = dict(paper, _pdf_landing_pages=[])
         for provider in self.providers:
@@ -370,7 +370,7 @@ class PDFResolver:
         self._settle(result)
 
     @staticmethod
-    def _record_provider(result, found):
+    def _record_provider(result, found) -> None:
         result.providers.append(
             {
                 'source': found.source,
@@ -384,7 +384,7 @@ class PDFResolver:
             result.error_details.append({'source': found.source, 'error': error})
         result.warnings.extend(dict(warning, source=found.source) for warning in found.warnings)
 
-    def _validate(self, candidate, paper, result):
+    def _validate(self, candidate, paper, result) -> None:
         self.validator.validate(candidate, paper)
         for error in candidate.error_details:
             entry = {'source': candidate.source, 'url': candidate.url, 'error': error}
@@ -410,7 +410,7 @@ class PDFResolver:
                     )
                 )
 
-    def _settle(self, result):
+    def _settle(self, result) -> None:
         valid = [
             candidate
             for candidate in result.pdf_candidates

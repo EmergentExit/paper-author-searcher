@@ -37,7 +37,7 @@ class OpenAlexProvider:
         works_limit=None,
         source_config=DEFAULT_SOURCES,
         matching_config=DEFAULT_MATCHING,
-    ):
+    ) -> None:
         self.client = client
         self.api_key = api_key
         self.base_url = source_config.openalex_url.rstrip('/')
@@ -163,7 +163,7 @@ class OpenAlexProvider:
         scored.sort(key=lambda item: (item[1].author_id not in scoped, -item[0]))
         return [candidate for _, candidate in scored[: self.enrich_limit]]
 
-    def _enrich(self, candidate):
+    def _enrich(self, candidate) -> None:
         params = {
             'filter': 'authorships.author.id:' + candidate.author_id,
             'per-page': self.works_limit,
@@ -188,7 +188,7 @@ class OpenAlexProvider:
         candidate.affiliations = sorted(set(candidate.affiliations))
 
     @staticmethod
-    def _add_authorship(candidate, authorship):
+    def _add_authorship(candidate, authorship) -> None:
         author = authorship.get('author') or {}
         author_id = (author.get('id') or '').rsplit('/', 1)[-1]
         if author_id == candidate.author_id:
@@ -206,7 +206,7 @@ class SemanticScholarProvider:
 
     def __init__(
         self, client, api_key=None, limit=None, source_config=DEFAULT_SOURCES, matching_config=DEFAULT_MATCHING
-    ):
+    ) -> None:
         self.client = client
         self.api_key = api_key
         self.base_url = source_config.semantic_scholar_url.rstrip('/')
@@ -277,7 +277,7 @@ class DBLPProvider:
 
     def __init__(
         self, client, limit=None, source_config=DEFAULT_SOURCES, matching_config=DEFAULT_MATCHING, departments=None
-    ):
+    ) -> None:
         self.client = client
         self.base_url = source_config.dblp_url.rstrip('/')
         self.limit = source_config.dblp_author_limit if limit is None else limit
@@ -322,7 +322,7 @@ class DBLPProvider:
         return author_id
 
     @staticmethod
-    def _add_person_metadata(candidate, root, departments):
+    def _add_person_metadata(candidate, root, departments) -> None:
         for person in root.findall('person'):
             for author in person.findall('author'):
                 if author.text:
@@ -345,7 +345,9 @@ class DBLPProvider:
                     candidate.links.append(url.text.strip())
 
     @staticmethod
-    def _add_publication_metadata(candidate, root, minimum_title_words=DEFAULT_MATCHING.work_title_minimum_words):
+    def _add_publication_metadata(
+        candidate, root, minimum_title_words=DEFAULT_MATCHING.work_title_minimum_words
+    ) -> None:
         for record in root.findall('r'):
             for author in record.findall('.//author'):
                 if author.text and author.text not in candidate.aliases:
@@ -361,7 +363,7 @@ class DBLPProvider:
             candidate.works.append(identity_work(dois, arxiv, title, minimum_title_words))
 
 
-def _extend_unique(values, additions):
+def _extend_unique(values, additions) -> None:
     for value in additions:
         if value not in values:
             values.append(value)

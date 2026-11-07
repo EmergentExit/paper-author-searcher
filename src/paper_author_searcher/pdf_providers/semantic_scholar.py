@@ -1,10 +1,14 @@
 """Semantic Scholar open-access PDFs and external IDs."""
 
+from collections.abc import Iterable
 from http import HTTPStatus
+from typing import Any
 
-from paper_author_searcher.config import DEFAULT_PDF, DEFAULT_SOURCES
-from paper_author_searcher.http import SourceError
+from paper_author_searcher.config import DEFAULT_PDF, DEFAULT_SOURCES, PDFConfig, SourceConfig
+from paper_author_searcher.http import HttpTransport, SourceError
+from paper_author_searcher.json_types import JSONList, JSONObject
 from paper_author_searcher.matching import normalize_title
+from paper_author_searcher.models import PDFCandidate, PDFProviderResult
 from paper_author_searcher.pdf_identity import arxiv_ids, metadata_identity, paper_dois, paper_ids, source_records
 from paper_author_searcher.pdf_source_requests import SemanticScholarRequests
 from paper_author_searcher.status import ProviderStatus
@@ -12,7 +16,13 @@ from paper_author_searcher.status import ProviderStatus
 from .base import MetadataPDFProvider, make_candidate
 
 
-def semantic_candidates(paper, work, provider, metadata_url=None, config=DEFAULT_PDF):
+def semantic_candidates(
+    paper: JSONObject,
+    work: object,
+    provider: str,
+    metadata_url: str | None = None,
+    config: PDFConfig = DEFAULT_PDF,
+) -> list[PDFCandidate]:
     if not isinstance(work, dict):
         raise SourceError('Malformed Semantic Scholar paper: expected an object', error_type='malformed_response')
     location = work.get('openAccessPdf') or {}
@@ -64,14 +74,20 @@ class SemanticScholarPDFProvider(MetadataPDFProvider):
     name = 'semantic_scholar'
     fields = SemanticScholarRequests.fields
 
-    def __init__(self, client, sources=DEFAULT_SOURCES, api_key=None, config=DEFAULT_PDF):
+    def __init__(
+        self,
+        client: HttpTransport,
+        sources: SourceConfig = DEFAULT_SOURCES,
+        api_key: str | None = None,
+        config: PDFConfig = DEFAULT_PDF,
+    ) -> None:
         super().__init__(client, sources)
         self.api_key = api_key
         self.config = config
         self.requests = SemanticScholarRequests(self.client, self.api_key, config, sources)
 
     @staticmethod
-    def _saved_work(paper, identifier):
+    def _saved_work(paper: JSONObject, identifier: str) -> JSONObject | None:
         for record in source_records(paper):
             work = record.get('raw_metadata') or {}
             if record.get('source') != SemanticScholarPDFProvider.name or 'openAccessPdf' not in work:
@@ -80,7 +96,7 @@ class SemanticScholarPDFProvider(MetadataPDFProvider):
                 return work
         return None
 
-    def prepare(self, papers):
+    def prepare(self, papers: Iterable[JSONObject]) -> None:
         identifiers = []
         for paper in papers:
             for identifier in self.lookups(paper):
@@ -88,14 +104,14 @@ class SemanticScholarPDFProvider(MetadataPDFProvider):
                     identifiers.append(identifier)
         self.requests.prefetch(identifiers)
 
-    def request_statistics(self):
+    def request_statistics(self) -> dict[str, Any]:
         return dict(
             self.requests.statistics,
             events=list(self.requests.events),
             scope='logical calls; HTTP retries are not included',
         )
 
-    def find(self, paper):
+    def find(self, paper: JSONObject) -> PDFProviderResult:
         result = super().find(paper)
         for diagnostic in result.diagnostics:
             diagnostic.update(self.requests.diagnostics(diagnostic['identifier']))
@@ -112,7 +128,7 @@ class SemanticScholarPDFProvider(MetadataPDFProvider):
             result.status = ProviderStatus.NOT_FOUND
         return result
 
-    def _search_title(self, paper, result):
+    def _search_title(self, paper: JSONObject, result: PDFProviderResult) -> None:
         if not self.config.semantic_scholar_title_search or not paper.get('title'):
             return
         try:
@@ -150,7 +166,7 @@ class SemanticScholarPDFProvider(MetadataPDFProvider):
                 }
             )
 
-    def lookups(self, paper):
+    def lookups(self, paper: JSONObject) -> list[str]:
         identifiers = paper_ids(paper, self.name)
         if identifiers:
             return identifiers
@@ -158,7 +174,7 @@ class SemanticScholarPDFProvider(MetadataPDFProvider):
         identifiers.extend('ARXIV:' + value for value in arxiv_ids(paper))
         return identifiers
 
-    def lookup(self, paper, identifier):
+    def lookup(self, paper: JSONObject, identifier: str) -> tuple[list[PDFCandidate], JSONList]:
         work = self._saved_work(paper, identifier)
         if work is not None:
             return semantic_candidates(paper, work, self.name, 'saved_semantic_scholar_metadata', self.config), []

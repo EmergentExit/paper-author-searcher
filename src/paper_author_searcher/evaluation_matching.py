@@ -173,7 +173,7 @@ class TruthMatch:
 
 
 class GroundTruthMatcher:
-    def __init__(self, truth):
+    def __init__(self, truth) -> None:
         self.truth = truth
         self.by_id = {paper['evaluation_id']: paper for paper in truth.papers}
         self.identifiers = {}
@@ -337,7 +337,7 @@ def _bibliographic_authors_agree(left, right):
     # A complete matching avoids greedily assigning an abbreviated name to the wrong author.
     assigned: dict[str, Any] = {}
 
-    def assign(position, visited):
+    def assign(position, visited) -> bool:
         for index in choices[position]:
             if index in visited:
                 continue

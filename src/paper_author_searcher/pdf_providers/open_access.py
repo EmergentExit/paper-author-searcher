@@ -3,9 +3,10 @@
 from typing import Any
 from urllib.parse import quote, urlsplit
 
-from paper_author_searcher.config import DEFAULT_PDF, DEFAULT_SOURCES
-from paper_author_searcher.http import SourceError
-from paper_author_searcher.models import PDFProviderResult
+from paper_author_searcher.config import DEFAULT_PDF, DEFAULT_SOURCES, PDFConfig, SourceConfig
+from paper_author_searcher.http import HttpTransport, SourceError
+from paper_author_searcher.json_types import JSONList, JSONObject
+from paper_author_searcher.models import PDFCandidate, PDFProviderResult
 from paper_author_searcher.pdf_identity import metadata_identity, paper_dois
 from paper_author_searcher.pdf_settings import redact_contact
 from paper_author_searcher.settings import validate_contact_email
@@ -17,7 +18,7 @@ from .base import MetadataPDFProvider, make_candidate
 class UnpaywallPDFProvider(MetadataPDFProvider):
     name = 'unpaywall'
 
-    def __init__(self, client, email=None, config=DEFAULT_PDF):
+    def __init__(self, client: HttpTransport, email: str | None = None, config: PDFConfig = DEFAULT_PDF) -> None:
         super().__init__(client)
         self.config = config
         self.configuration_error = None
@@ -27,7 +28,7 @@ class UnpaywallPDFProvider(MetadataPDFProvider):
             self.email = None
             self.configuration_error = str(exc)
 
-    def find(self, paper):
+    def find(self, paper: JSONObject) -> PDFProviderResult:
         if self.configuration_error:
             return PDFProviderResult(self.name, status=ProviderStatus.DISABLED, errors=[self.configuration_error])
         if not self.email:
@@ -38,10 +39,10 @@ class UnpaywallPDFProvider(MetadataPDFProvider):
         result.errors = [redact_contact(message, self.email) for message in result.errors]
         return result
 
-    def lookups(self, paper):
+    def lookups(self, paper: JSONObject) -> list[str]:
         return [doi[len('doi:') :] for doi in sorted(paper_dois(paper))]
 
-    def lookup(self, paper, identifier):
+    def lookup(self, paper: JSONObject, identifier: str) -> tuple[list[PDFCandidate], JSONList]:
         url = self.config.unpaywall_url + '/' + quote(identifier, safe='/')
         work = self.client.get(url, params={'email': self.email})
         if not isinstance(work, dict):
@@ -99,14 +100,16 @@ class EuropePMCPDFProvider(MetadataPDFProvider):
 
     name = 'europepmc'
 
-    def __init__(self, client, sources=DEFAULT_SOURCES, config=DEFAULT_PDF):
+    def __init__(
+        self, client: HttpTransport, sources: SourceConfig = DEFAULT_SOURCES, config: PDFConfig = DEFAULT_PDF
+    ) -> None:
         super().__init__(client, sources)
         self.config = config
 
-    def lookups(self, paper):
+    def lookups(self, paper: JSONObject) -> list[str]:
         return [doi[len('doi:') :] for doi in sorted(paper_dois(paper))]
 
-    def lookup(self, paper, identifier):
+    def lookup(self, paper: JSONObject, identifier: str) -> tuple[list[PDFCandidate], JSONList]:
         data = self.client.get(
             self.sources.europepmc_url,
             params={'query': f'DOI:"{identifier}"', 'format': 'json', 'resultType': 'core', 'pageSize': 1},
@@ -176,14 +179,14 @@ class OpenAIREPDFProvider(MetadataPDFProvider):
 
     name = 'openaire'
 
-    def __init__(self, client, config=DEFAULT_PDF):
+    def __init__(self, client: HttpTransport, config: PDFConfig = DEFAULT_PDF) -> None:
         super().__init__(client)
         self.config = config
 
-    def lookups(self, paper):
+    def lookups(self, paper: JSONObject) -> list[str]:
         return [doi[len('doi:') :] for doi in sorted(paper_dois(paper))]
 
-    def lookup(self, paper, identifier):
+    def lookup(self, paper: JSONObject, identifier: str) -> tuple[list[PDFCandidate], JSONList]:
         data = self.client.get(self.config.openaire_url, params={'pid': identifier})
         results = (data or {}).get('results') or []
         if not isinstance(results, list):

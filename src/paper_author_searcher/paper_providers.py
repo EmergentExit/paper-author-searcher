@@ -99,7 +99,7 @@ class PagedPaperProvider(ABC):
             result.error = str(exc)
         return result
 
-    def _add_records(self, result, records, author_id):
+    def _add_records(self, result, records, author_id) -> None:
         for item in records:
             result.records_received += 1
             try:
@@ -131,7 +131,7 @@ class OpenAlexPaperProvider(PagedPaperProvider):
         'abstract_inverted_index,type,ids,is_authors_truncated,primary_topic'
     )
 
-    def __init__(self, provider: OpenAlexProvider, config=DEFAULT_COLLECTION):
+    def __init__(self, provider: OpenAlexProvider, config=DEFAULT_COLLECTION) -> None:
         self.provider = provider
         self.config = config
 
@@ -245,7 +245,7 @@ class SemanticScholarPaperProvider(PagedPaperProvider):
     FIELDS = 'title,authors,year,externalIds,venue,abstract,url,publicationTypes,openAccessPdf'
     AUTHOR_FIELDS = 'name,externalIds,affiliations'
 
-    def __init__(self, provider: SemanticScholarProvider, config=DEFAULT_COLLECTION):
+    def __init__(self, provider: SemanticScholarProvider, config=DEFAULT_COLLECTION) -> None:
         self.provider = provider
         self.config = config
 
@@ -278,7 +278,7 @@ class SemanticScholarPaperProvider(PagedPaperProvider):
             return {'x-api-key': self.provider.api_key}
         return {}
 
-    def _attach_identity(self, papers, author_id, metadata):
+    def _attach_identity(self, papers, author_id, metadata) -> None:
         for paper in papers:
             for detail in paper.author_details:
                 if canonical_author_id(self.name, detail.get('author_id')) != str(author_id):
@@ -367,7 +367,7 @@ class SemanticScholarPaperProvider(PagedPaperProvider):
 class DBLPPaperProvider:
     name = 'dblp'
 
-    def __init__(self, provider: DBLPProvider):
+    def __init__(self, provider: DBLPProvider) -> None:
         self.provider = provider
 
     def collect(self, author_id):
@@ -399,7 +399,7 @@ class DBLPPaperProvider:
             result.error = str(exc)
         return result
 
-    def _add_record(self, result, container, author_id):
+    def _add_record(self, result, container, author_id) -> None:
         result.records_received += 1
         record = next(iter(container), None)
         if record is None:

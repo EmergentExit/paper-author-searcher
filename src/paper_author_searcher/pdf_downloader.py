@@ -107,7 +107,7 @@ def file_digest(path, config=DEFAULT_DOWNLOAD):
 
 
 class PDFDownloader:
-    def __init__(self, client, validator=None, config=DEFAULT_DOWNLOAD, storage=DEFAULT_STORAGE):
+    def __init__(self, client, validator=None, config=DEFAULT_DOWNLOAD, storage=DEFAULT_STORAGE) -> None:
         self.client = client
         self.validator = validator or PDFFileValidator(config)
         self.config = config
@@ -117,7 +117,7 @@ class PDFDownloader:
         self,
         saved_result,
         output_dir,
-        include_needs_review=False,
+        include_needs_review: bool = False,
         maximum_downloads=None,
         manifest_path=None,
         progress=None,
@@ -252,7 +252,7 @@ class PDFDownloader:
                 unbound.append(dict(candidate, url=url, final_url=None, **{CONTENT_ONLY: True}))
         return unbound[: self.config.maximum_content_checks]
 
-    def _reuse_existing(self, root, paper, record, entries, candidates=()):
+    def _reuse_existing(self, root, paper, record, entries, candidates=()) -> bool:
         possible = list(entries)
         filename = paper_filename(paper, self.config)
         for folder in ('', REVIEW_FOLDER, QUARANTINE_FOLDER):
@@ -409,7 +409,7 @@ class PDFDownloader:
             elif record.format_status == FormatStatus.UNVERIFIED:
                 record.validation_status = PDFValidationStatus.UNVERIFIED
 
-    def _record_completed(self, record, paper, candidate, receipt, validation, relative, duplicate):
+    def _record_completed(self, record, paper, candidate, receipt, validation, relative, duplicate) -> None:
         self._apply_validation(record, validation)
         record.file_size, record.sha256 = receipt.file_size, receipt.sha256
         record.pdf_url = candidate.get('final_url') or candidate['url']
@@ -424,7 +424,7 @@ class PDFDownloader:
         record.duplicate_of = duplicate
         record.download_status = DownloadStatus.DUPLICATE_CONTENT if duplicate else DownloadStatus.DOWNLOADED
 
-    def _apply_validation(self, record, validation):
+    def _apply_validation(self, record, validation) -> None:
         record.validation = asdict(validation)
         record.validation_status = validation.validation_status
         record.format_status = validation.format_status
@@ -487,7 +487,7 @@ class PDFDownloader:
             raise
         return destination.relative_to(root).as_posix()
 
-    def _organize_confirmed_files(self, root, results, retained):
+    def _organize_confirmed_files(self, root, results, retained) -> None:
         references: dict[str, Any] = {}
         for record in results:
             if record.local_filename:
