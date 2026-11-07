@@ -6,6 +6,7 @@ import logging
 import math
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from .composition import RunOptions, ServiceContainer
 from .config import AMBIGUITY_POLICIES, METERED_COST_CAP_USD, AmbiguityPolicy
@@ -13,7 +14,7 @@ from .logging_config import add_logging_arguments, configure_from_arguments
 from .models import ProfessorQuery
 from .settings import Settings, add_settings_argument, load_settings, validate_contact_email
 from .status import RunStatus
-from .workflow import MODES, load_checkpoint
+from .workflow import MODES, PaperSearchWorkflow, load_checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 MAXIMUM_PAGE_SIZE = 200
 
 
-def add_hint_arguments(parser):
+def add_hint_arguments(parser: argparse.ArgumentParser) -> None:
     """Optional identity hints; each one makes namesake disambiguation far more reliable."""
     parser.add_argument('--orcid', help='ORCID iD of the researcher')
     parser.add_argument('--homepage', help='Public homepage or CV URL; DOIs/arXiv links on it become anchors')
@@ -54,7 +55,7 @@ def add_hint_arguments(parser):
     )
 
 
-def query_from_args(args):
+def query_from_args(args: argparse.Namespace) -> ProfessorQuery:
     return ProfessorQuery(
         args.name,
         args.university,
@@ -72,7 +73,7 @@ def query_from_args(args):
     )
 
 
-def add_workflow_arguments(parser):
+def add_workflow_arguments(parser: argparse.ArgumentParser) -> None:
     add_settings_argument(parser)
     parser.add_argument('--mode', choices=MODES, help='metadata, pdf-urls, or full workflow')
     parser.add_argument('--input', type=Path, help='Resolver, Collector, PDF URL JSON or workflow report')
@@ -117,7 +118,7 @@ def add_workflow_arguments(parser):
     )
 
 
-def _validate(parser, args):
+def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     if args.require_unpaywall:
         try:
             email = args.unpaywall_email or load_settings(args).credentials.unpaywall_email
@@ -145,15 +146,15 @@ def _validate(parser, args):
         parser.error('--retries must be nonnegative')
 
 
-def build_container(args, settings: Settings | None = None) -> ServiceContainer:
+def build_container(args: argparse.Namespace, settings: Settings | None = None) -> ServiceContainer:
     return ServiceContainer(settings or load_settings(args), RunOptions.from_namespace(args))
 
 
-def build_workflow(args, settings: Settings | None = None):
+def build_workflow(args: argparse.Namespace, settings: Settings | None = None) -> PaperSearchWorkflow:
     return build_container(args, settings).workflow()
 
 
-def _show_candidates(report, verbose=False):
+def _show_candidates(report: dict[str, Any], verbose: bool = False) -> None:
     identity = report.get('identity') or {}
     candidates = identity.get('candidates') or []
     visible = candidates if verbose else candidates[:2]
@@ -187,7 +188,7 @@ def _show_candidates(report, verbose=False):
     )
 
 
-def run_arguments(parser, args):
+def run_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     _validate(parser, args)
     try:
         settings = load_settings(args)

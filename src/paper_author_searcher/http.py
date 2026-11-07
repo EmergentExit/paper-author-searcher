@@ -15,12 +15,12 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from http import HTTPStatus
 from http.client import HTTPException
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request
 
-from .config import DEFAULT_DOWNLOAD, DEFAULT_HTTP
+from .config import DEFAULT_DOWNLOAD, DEFAULT_HTTP, DownloadConfig, HttpConfig
 from .http_status import is_server_error, is_success
 from .http_transport import KeepAliveTransport
 from .network_safety import secure_download_opener
@@ -28,9 +28,11 @@ from .redaction import redact
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar('T')
 
-class HttpTransport(Protocol):
-    """What services ask of an HTTP client: ``HttpClient`` and every layer the composition root wraps around it."""
+
+class MetadataReader(Protocol):
+    """Reads one metadata document: the HTTP client, or a local index that answers the same URLs (DBLP dump)."""
 
     def get(
         self,
@@ -39,6 +41,10 @@ class HttpTransport(Protocol):
         headers: dict[str, str] | None = None,
         xml: bool = False,
     ) -> Any: ...
+
+
+class HttpTransport(MetadataReader, Protocol):
+    """What services ask of an HTTP client: ``HttpClient`` and every layer the composition root wraps around it."""
 
     def post_json(
         self,
@@ -69,8 +75,14 @@ PDF_SIGNATURE_WINDOW = 1024
 
 class SourceError(RuntimeError):
     def __init__(
-        self, message, status_code=None, error_type=None, retry_after=None, endpoint_host=None, request_context=None
-    ):
+        self,
+        message: object,
+        status_code: int | None = None,
+        error_type: str | None = None,
+        retry_after: float | None = None,
+        endpoint_host: str | None = None,
+        request_context: dict[str, Any] | None = None,
+    ) -> None:
         # Source errors end up in logs and saved reports: never let a key or contact address ride along.
         super().__init__(redact(str(message)))
         self.status_code = status_code
@@ -80,7 +92,7 @@ class SourceError(RuntimeError):
         self.request_context = request_context or {}
 
     @staticmethod
-    def _error_type(status):
+    def _error_type(status: int | None) -> str:
         categories = {
             400: 'invalid_request',
             401: 'authentication_required',
@@ -95,7 +107,7 @@ class SourceError(RuntimeError):
         return 'source_error'
 
 
-def require_public_http_url(url):
+def require_public_http_url(url: object) -> None:
     if not isinstance(url, str) or any(ord(character) <= LAST_CONTROL_CHARACTER for character in url):
         raise SourceError('Malformed resource URL')
     parsed = urlsplit(url)
@@ -113,13 +125,15 @@ def require_public_http_url(url):
 
 
 class PublicRedirectHandler(HTTPRedirectHandler):
-    def __init__(self, maximum_redirects, redirect_guard=None):
+    def __init__(self, maximum_redirects: int, redirect_guard: Callable[[str], None] | None = None) -> None:
         # Per-instance limits shadow urllib's class-level defaults on purpose.
         self.max_redirections = maximum_redirects  # type: ignore[misc]
         self.max_repeats = maximum_redirects  # type: ignore[misc]
         self.redirect_guard = redirect_guard
 
-    def redirect_request(self, request, response, code, message, headers, new_url):
+    def redirect_request(
+        self, request: Request, response: Any, code: int, message: str, headers: Any, new_url: str
+    ) -> Request | None:
         require_public_http_url(new_url)
         if self.redirect_guard:
             self.redirect_guard(new_url)
@@ -137,7 +151,7 @@ class URLProbe:
     request_context: dict = field(default_factory=dict)
 
 
-def has_pdf_signature(prefix):
+def has_pdf_signature(prefix: bytes | bytearray) -> bool:
     return prefix.lstrip().startswith(b'%PDF-')
 
 
@@ -153,8 +167,14 @@ class DownloadReceipt:
 class HttpClient:
     """Bounded JSON/XML API client with retries; metadata calls reuse pooled keep-alive connections."""
 
-    def __init__(self, timeout=None, retries=None, config=DEFAULT_HTTP, transport=None):
-        overrides = {}
+    def __init__(
+        self,
+        timeout: float | None = None,
+        retries: int | None = None,
+        config: HttpConfig = DEFAULT_HTTP,
+        transport: Any = None,
+    ) -> None:
+        overrides: dict[str, Any] = {}
         if timeout is not None:
             overrides['timeout'] = timeout
         if retries is not None:
@@ -162,37 +182,50 @@ class HttpClient:
         self.config = replace(config, **overrides)
         self.timeout = self.config.timeout
         self.retries = self.config.retries
-        self.transport_statistics = {}
+        self.transport_statistics: dict[str, dict[str, Any]] = {}
         self._statistics_lock = threading.Lock()
         # Strategy for metadata requests: anything with urlopen's open(request, timeout) contract.
         self.transport = transport or KeepAliveTransport()
 
-    def _count(self, counters, key):
+    def _count(self, counters: dict[str, Any], key: str) -> None:
         with self._statistics_lock:
             counters[key] = counters.get(key, 0) + 1
 
-    def close(self):
+    def close(self) -> None:
         close = getattr(self.transport, 'close', None)
         if callable(close):
             close()
 
-    def __enter__(self):
+    def __enter__(self) -> 'HttpClient':
         return self
 
-    def __exit__(self, *exc_info):
+    def __exit__(self, *exc_info: object) -> None:
         self.close()
 
-    def get(self, url, params=None, headers=None, xml=False):
+    def get(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        xml: bool = False,
+    ) -> Any:
         request = self._request(url, params, headers, xml)
         return self._with_retries(request, lambda: self._read_response(request, xml), 'metadata_get')
 
-    def post_json(self, url, payload, params=None, headers=None, expected_type=dict):
+    def post_json(
+        self,
+        url: str,
+        payload: Any,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        expected_type: type = dict,
+    ) -> Any:
         request = self._request(url, params, headers, xml=False)
         request.data = json.dumps(payload).encode('utf-8')
         request.add_header('Content-Type', 'application/json')
         return self._with_retries(request, lambda: self._read_response(request, False, expected_type), 'metadata_post')
 
-    def _with_retries(self, request, read_response, operation='request'):
+    def _with_retries(self, request: Request, read_response: Callable[[], T], operation: str = 'request') -> T:
         with self._statistics_lock:
             statistics = self.transport_statistics.setdefault(
                 operation,
@@ -257,9 +290,17 @@ class HttpClient:
                 else:
                     self._count(statistics, 'response_errors')
                 raise
-        return None
+        # Every attempt returns or raises: the last one has no retries left.
+        raise AssertionError('unreachable: retries exhausted without an error')
 
-    def probe(self, url, maximum_bytes=1024, html_bytes=0, maximum_redirects=5, redirect_guard=None):
+    def probe(
+        self,
+        url: str,
+        maximum_bytes: int = 1024,
+        html_bytes: int = 0,
+        maximum_redirects: int = 5,
+        redirect_guard: Callable[[str], None] | None = None,
+    ) -> URLProbe:
         """Read a bounded prefix, even when a server ignores Range; never save a body."""
         require_public_http_url(url)
         if maximum_bytes < 1 or html_bytes < 0:
@@ -278,7 +319,7 @@ class HttpClient:
             PublicRedirectHandler(maximum_redirects, redirect_guard), DEFAULT_DOWNLOAD.allowed_ports
         )
 
-        def read_prefix():
+        def read_prefix() -> URLProbe:
             with opener.open(request, timeout=self.timeout) as response:
                 content_type = response.headers.get('Content-Type', '').lower().split(';', 1)[0]
                 limit = maximum_bytes
@@ -302,7 +343,7 @@ class HttpClient:
 
         return self._with_retries(request, read_prefix, 'pdf_probe')
 
-    def stream_pdf(self, url, destination, config):
+    def stream_pdf(self, url: str, destination: Any, config: DownloadConfig) -> DownloadReceipt:
         """Restart failed transfers from byte zero; validate public DNS on every connection."""
         require_public_http_url(url)
         request = self._request(
@@ -316,7 +357,7 @@ class HttpClient:
         )
         opener = secure_download_opener(PublicRedirectHandler(config.maximum_redirects), config.allowed_ports)
 
-        def transfer():
+        def transfer() -> DownloadReceipt:
             deadline = time.monotonic() + config.maximum_transfer_seconds
             with opener.open(request, timeout=self.timeout) as response:
                 final_url = response.geturl()
@@ -355,7 +396,7 @@ class HttpClient:
 
         return self._with_retries(request, transfer, 'pdf_download')
 
-    def _download_size(self, response, content_type, config):
+    def _download_size(self, response: Any, content_type: str, config: DownloadConfig) -> int | None:
         if response.status not in (200, 206):
             raise SourceError(f'Unexpected download HTTP {response.status}', response.status)
         if content_type in ('text/html', 'application/xhtml+xml'):
@@ -381,7 +422,7 @@ class HttpClient:
             raise SourceError('Declared download size exceeds the configured limit')
         return expected
 
-    def _request(self, url, params, headers, xml):
+    def _request(self, url: str, params: dict[str, Any] | None, headers: dict[str, str] | None, xml: bool) -> Request:
         if params:
             supplied_params = {}
             for key, value in params.items():
@@ -395,7 +436,7 @@ class HttpClient:
         request_headers.update(headers or {})
         return Request(url, headers=request_headers)
 
-    def _read_response(self, request, xml, expected_type=dict):
+    def _read_response(self, request: Request, xml: bool, expected_type: type = dict) -> Any:
         with self.transport.open(request, timeout=self.timeout) as response:
             data = response.read(self.config.response_limit + 1)
             status = response.status
@@ -412,7 +453,9 @@ class HttpClient:
             raise SourceError(diagnostic, status_code=status)
         return self._parse_response(data, content_type, diagnostic, xml, expected_type)
 
-    def _parse_response(self, data, content_type, diagnostic, xml, expected_type=dict):
+    def _parse_response(
+        self, data: bytes, content_type: str, diagnostic: str, xml: bool, expected_type: type = dict
+    ) -> Any:
         expected = 'json'
         if xml:
             expected = 'xml'
@@ -436,8 +479,8 @@ class HttpClient:
         return parsed
 
     @staticmethod
-    def _retry_after(error):
-        value = (error.headers or {}).get('Retry-After', '').strip()
+    def _retry_after(error: HTTPError) -> float | None:
+        value = (error.headers.get('Retry-After', '') if error.headers else '').strip()
         if value.isdigit():
             return float(value)
         try:

@@ -1,14 +1,14 @@
 """Citation metadata (citation_pdf_url) on publisher landing pages."""
 
 from html.parser import HTMLParser
-from typing import Any
 from urllib.parse import urljoin
 
-from paper_author_searcher.config import DEFAULT_PDF
+from paper_author_searcher.config import DEFAULT_PDF, PDFConfig
 from paper_author_searcher.html_support import decode_response
-from paper_author_searcher.http import SourceError
+from paper_author_searcher.http import HttpTransport, SourceError, URLProbe
 from paper_author_searcher.http_status import is_success
-from paper_author_searcher.models import PDFProviderResult
+from paper_author_searcher.json_types import JSONList, JSONObject
+from paper_author_searcher.models import PDFCandidate, PDFProviderResult
 from paper_author_searcher.pdf_identity import metadata_identity, source_records
 from paper_author_searcher.status import IdentityStatus, ProviderStatus
 
@@ -17,11 +17,11 @@ from .openalex import openalex_locations
 
 
 class CitationMetadata(HTMLParser):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
-        self.values = {}
+        self.values: dict[str, list[str]] = {}
 
-    def handle_starttag(self, tag, attrs):
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag.lower() != 'meta':
             return
         attributes = dict(attrs)
@@ -46,11 +46,11 @@ class LandingPagePDFProvider:
 
     name = 'landing_page'
 
-    def __init__(self, client, config=DEFAULT_PDF):
+    def __init__(self, client: HttpTransport, config: PDFConfig = DEFAULT_PDF) -> None:
         self.client = client
         self.config = config
 
-    def find(self, paper):
+    def find(self, paper: JSONObject) -> PDFProviderResult:
         result = PDFProviderResult(self.name)
         pages = self._pages(paper)
         urls = list(pages)
@@ -66,8 +66,8 @@ class LandingPagePDFProvider:
             result.status = ProviderStatus.PARTIAL if len(result.errors) < len(urls) else ProviderStatus.ERROR
         return result
 
-    def _pages(self, paper):
-        pages: dict[str, Any] = {}
+    def _pages(self, paper: JSONObject) -> dict[str, JSONList]:
+        pages: dict[str, JSONList] = {}
         for record in source_records(paper):
             if record.get('paper_url'):
                 pages.setdefault(record['paper_url'], [])
@@ -80,13 +80,13 @@ class LandingPagePDFProvider:
                 pages.setdefault(location['landing_page_url'], []).append(location)
         return pages
 
-    def _lookup(self, paper, url, bindings):
+    def _lookup(self, paper: JSONObject, url: str, bindings: JSONList) -> list[PDFCandidate]:
         response = self.client.probe(
             url, self.config.preview_bytes, self.config.html_metadata_bytes, self.config.maximum_redirects
         )
         return self._response_candidates(paper, response, bindings)
 
-    def _response_candidates(self, paper, response, bindings):
+    def _response_candidates(self, paper: JSONObject, response: URLProbe, bindings: JSONList) -> list[PDFCandidate]:
         if not is_success(response.status):
             raise SourceError(f'Landing page HTTP {response.status}')
         if response.content_type not in ('text/html', 'application/xhtml+xml'):
@@ -129,7 +129,7 @@ class LandingPagePDFProvider:
             )
         return candidates
 
-    def _direct_pdf(self, paper, response, bindings):
+    def _direct_pdf(self, paper: JSONObject, response: URLProbe, bindings: JSONList) -> list[PDFCandidate]:
         candidates = []
         for binding in bindings:
             if binding.get('is_oa') is not True:
@@ -155,6 +155,6 @@ class LandingPagePDFProvider:
             )
         return candidates
 
-    def _single(self, values, key):
+    def _single(self, values: dict[str, list[str]], key: str) -> str | None:
         items = values.get(key) or []
         return items[0] if len(set(items)) == 1 else None

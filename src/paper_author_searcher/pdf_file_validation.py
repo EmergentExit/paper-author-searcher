@@ -9,12 +9,14 @@ import subprocess
 import sys
 import tempfile
 import unicodedata
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Protocol
 
 from .config import DEFAULT_DOWNLOAD, DownloadConfig
 from .http import has_pdf_signature
+from .json_types import JSONObject
 from .matching import arxiv_from_doi, canonical_arxiv, canonical_doi, normalize, normalize_title
 from .models import PDFFileValidation
 from .pdf_document_types import NON_FULL_DOCUMENTS, classify_document
@@ -31,9 +33,9 @@ class FileValidator(Protocol):
     def validate(self, path: Any, paper: dict[str, Any]) -> PDFFileValidation: ...
 
 
-def validation_target(paper, candidate=None):
+def validation_target(paper: JSONObject, candidate: JSONObject | None = None) -> JSONObject:
     """Preserve publisher bylines only after the URL's citation metadata was bound."""
-    target = {key: paper.get(key) for key in ('title', 'authors', 'year', 'doi')}
+    target: JSONObject = {key: paper.get(key) for key in ('title', 'authors', 'year', 'doi')}
     # Another edition of the same work (its arXiv preprint) prints the arXiv identifier, not the venue DOI.
     target['arxiv_ids'] = edition_arxiv_ids(paper)
     target['served_arxiv_id'], target['edition_titles'] = _served_edition(candidate)
@@ -91,7 +93,7 @@ def validation_target(paper, candidate=None):
     return target
 
 
-def _served_edition(candidate):
+def _served_edition(candidate: JSONObject | None) -> tuple[str | None, list[str]]:
     """The arXiv ID a bound URL was served under, and the titles arXiv gave that ID.
 
     arXiv serves one paper at arxiv.org/pdf/<id>; once the URL was bound to the paper (its identity verified), the
@@ -115,12 +117,19 @@ def _served_edition(candidate):
     return served, titles
 
 
-def _best_title_kind(title, expected_titles, minimum_words):
+def _best_title_kind(title: str, expected_titles: Iterable[str], minimum_words: int) -> str:
     kinds = [metadata_title_kind(title, expected, minimum_words) for expected in expected_titles]
     return next((kind for kind in ('matching', 'decorated', 'technical') if kind in kinds), 'conflicting')
 
 
-def content_identity(paper, titles, title_regions, text, author_metadata, config=DEFAULT_DOWNLOAD):
+def content_identity(
+    paper: JSONObject,
+    titles: Iterable[str],
+    title_regions: Sequence[str],
+    text: str,
+    author_metadata: str,
+    config: DownloadConfig = DEFAULT_DOWNLOAD,
+) -> tuple[IdentityStatus, list[str], list[str]]:
     expected_title = normalize_title(paper.get('title') or '')
     expected_titles = [paper.get('title') or '', *(paper.get('edition_titles') or [])]
     titles = [_without_artifacts(title, config) for title in titles]
@@ -188,19 +197,19 @@ def content_identity(paper, titles, title_regions, text, author_metadata, config
     return IdentityStatus.NEEDS_REVIEW, sorted(observed_dois), evidence
 
 
-def _without_artifacts(title, config):
+def _without_artifacts(title: str, config: DownloadConfig) -> str:
     """A PDF title with typesetting remnants removed ("[width=2em,height=2em]assets/logo.png AxBench: ...")."""
     title = html.unescape(title)
     return ' '.join(re.sub(config.title_artifact_pattern, ' ', title, flags=re.IGNORECASE).split())
 
 
-def _printed_arxiv_ids(text):
+def _printed_arxiv_ids(text: str) -> list[str]:
     """arXiv identifiers printed as "arXiv:2408.15126v6" (the preprint's margin stamp or citation line)."""
     found = re.findall(r'arxiv\s*:\s*(\d{4}\.\d{4,5})(?:v\d+)?', text, flags=re.IGNORECASE)
     return [identifier for identifier in (canonical_arxiv(value) for value in found) if identifier]
 
 
-def _clean_extracted_doi(value, glued_labels=()):
+def _clean_extracted_doi(value: str, glued_labels: Iterable[str] = ()) -> str:
     value = _strip_trailing_punctuation(value)
     for label in glued_labels:
         if len(value) > len(label) and value.lower().endswith(label) and value[-len(label) - 1].isdigit():
@@ -208,7 +217,7 @@ def _clean_extracted_doi(value, glued_labels=()):
     return value
 
 
-def _strip_trailing_punctuation(value):
+def _strip_trailing_punctuation(value: str) -> str:
     pairs = {')': '(', ']': '[', '}': '{'}
     while value:
         last = value[-1]
@@ -221,11 +230,11 @@ def _strip_trailing_punctuation(value):
     return value
 
 
-def _authors_present(expected_authors, title_regions, author_metadata):
+def _authors_present(expected_authors: Sequence[str], title_regions: Sequence[str], author_metadata: str) -> bool:
     return authors_present(expected_authors, title_regions, author_metadata)
 
 
-def inspect_pdf(path, paper, config=DEFAULT_DOWNLOAD):
+def inspect_pdf(path: Any, paper: JSONObject, config: DownloadConfig = DEFAULT_DOWNLOAD) -> PDFFileValidation:
     from pypdf import PdfReader
 
     result = PDFFileValidation(identity_status=IdentityStatus.NOT_CHECKED)
@@ -347,12 +356,12 @@ WORKER_BOOTSTRAP = (
 
 
 class PDFFileValidator:
-    def __init__(self, config=DEFAULT_DOWNLOAD):
+    def __init__(self, config: DownloadConfig = DEFAULT_DOWNLOAD) -> None:
         self.config = config
         if importlib.util.find_spec('pypdf') is None:
             raise RuntimeError('Install the download extra: pip install -e ".[download]"')
 
-    def validate(self, path, paper):
+    def validate(self, path: Any, paper: dict[str, Any]) -> PDFFileValidation:
         target = {
             key: paper.get(key)
             for key in (
@@ -391,7 +400,7 @@ class PDFFileValidator:
             )
 
 
-def layout_text(path, layouts):
+def layout_text(path: Any, layouts: Iterable[Mapping[str, Any]]) -> list[str]:
     """The first page's text under each pdfminer layout (keyword arguments of LAParams)."""
     from pdfminer.high_level import extract_text
     from pdfminer.layout import LAParams
@@ -399,7 +408,7 @@ def layout_text(path, layouts):
     return [extract_text(path, page_numbers=[0], maxpages=1, laparams=LAParams(**layout)) for layout in layouts]
 
 
-def extract_pages(path, destination, pages):
+def extract_pages(path: Any, destination: Any, pages: int) -> None:
     """Copy a PDF's first ``pages`` pages to ``destination`` (a parser worker's job: the file is untrusted)."""
     from pypdf import PdfReader, PdfWriter
 
@@ -411,7 +420,9 @@ def extract_pages(path, destination, pages):
         writer.write(handle)
 
 
-def front_page_text(path, layouts, config=DEFAULT_DOWNLOAD):
+def front_page_text(
+    path: Any, layouts: Iterable[Mapping[str, Any]], config: DownloadConfig = DEFAULT_DOWNLOAD
+) -> list[str]:
     """The first page's text by a second extractor, in a resource-limited worker; [] when it cannot be done."""
     request = json.dumps({'config': asdict(config), 'layouts': list(layouts)})
     try:
@@ -429,7 +440,7 @@ def front_page_text(path, layouts, config=DEFAULT_DOWNLOAD):
         return []
 
 
-def front_pages(path, pages, config=DEFAULT_DOWNLOAD):
+def front_pages(path: Any, pages: int, config: DownloadConfig = DEFAULT_DOWNLOAD) -> bytes | None:
     """The PDF's first pages as bytes, cut in a resource-limited worker; None when it cannot be done."""
     with tempfile.TemporaryDirectory() as directory:
         destination = Path(directory) / 'front.pdf'
@@ -449,7 +460,7 @@ def front_pages(path, pages, config=DEFAULT_DOWNLOAD):
             return None
 
 
-def _apply_worker_limits(config):
+def _apply_worker_limits(config: DownloadConfig) -> None:
     try:
         import resource
 
@@ -458,7 +469,7 @@ def _apply_worker_limits(config):
         pass
 
 
-def _worker():
+def _worker() -> None:
     request = json.load(sys.stdin)
     config = DownloadConfig(**request['config'])
     _apply_worker_limits(config)

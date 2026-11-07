@@ -1,5 +1,6 @@
 """Ground-truth matching independent of retrieval/ownership heuristics."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from typing import Any
@@ -32,7 +33,7 @@ class GroundTruth:
     metadata: dict = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data):
+    def from_dict(cls, data: object) -> 'GroundTruth':
         if not isinstance(data, dict):
             raise ValueError('Ground truth must be an object')
         if data.get('schema_version') != 1:
@@ -91,7 +92,7 @@ class GroundTruth:
         return cls(papers, complete, professor, metadata)
 
 
-def _validate_metadata(paper):
+def _validate_metadata(paper: dict[str, Any]) -> None:
     for key in ('title', 'venue'):
         if paper.get(key) is not None and not isinstance(paper[key], str):
             raise ValueError(key + ' must be a string')
@@ -102,7 +103,7 @@ def _validate_metadata(paper):
         raise ValueError('authors must be a list of strings')
 
 
-def stable_identifiers(paper):
+def stable_identifiers(paper: dict[str, Any]) -> set[tuple[str, str]]:
     keys = set()
     doi_list = paper.get('dois') or []
     if not isinstance(doi_list, list):
@@ -148,7 +149,7 @@ def stable_identifiers(paper):
     return keys
 
 
-def metadata_key(paper):
+def metadata_key(paper: dict[str, Any]) -> tuple[str, Any, tuple[str, ...]] | None:
     _validate_metadata(paper)
     title = paper.get('title')
     year = paper.get('year')
@@ -173,7 +174,7 @@ class TruthMatch:
 
 
 class GroundTruthMatcher:
-    def __init__(self, truth):
+    def __init__(self, truth: GroundTruth) -> None:
         self.truth = truth
         self.by_id = {paper['evaluation_id']: paper for paper in truth.papers}
         self.identifiers = {}
@@ -188,14 +189,14 @@ class GroundTruthMatcher:
             for key in stable_identifiers(paper):
                 self.identifiers[key] = evaluation_id
             for description in [paper] + (paper.get('metadata_aliases') or []):
-                key = metadata_key(description)
-                if key is not None:
+                described = metadata_key(description)
+                if described is not None:
                     venue = description.get('venue') or paper.get('venue') or ''
-                    venues = self.metadata.setdefault(key, {}).setdefault(evaluation_id, set())
+                    venues = self.metadata.setdefault(described, {}).setdefault(evaluation_id, set())
                     venues.add(normalize(venue))
-                    self.title_year.setdefault(key[:2], []).append((evaluation_id, description, normalize(venue)))
+                    self.title_year.setdefault(described[:2], []).append((evaluation_id, description, normalize(venue)))
 
-    def match(self, paper):
+    def match(self, paper: dict[str, Any]) -> TruthMatch:
         keys = stable_identifiers(paper)
         found = set()
         evidence = []
@@ -241,7 +242,7 @@ class GroundTruthMatcher:
             return self._resolve_transcribed(same or close)
         return TruthMatch(evidence=['No adjudicated ground-truth match'])
 
-    def _transcribed_candidates(self, paper):
+    def _transcribed_candidates(self, paper: dict[str, Any]) -> tuple[set[str], set[str]]:
         """Evaluation IDs of transcribed entries with the same title, and of those with a close one."""
         title = normalize_title(paper.get('title') or '')
         authors = paper.get('authors') or []
@@ -265,7 +266,7 @@ class GroundTruthMatcher:
         return same, close
 
     @staticmethod
-    def _resolve_transcribed(ids):
+    def _resolve_transcribed(ids: set[str]) -> TruthMatch:
         """Unlike ``_resolve``, another DOI is no conflict: title, nearby year and a shared author make an edition."""
         evidence = ['Title of a transcribed truth entry, a nearby year and at least one author agree']
         if len(ids) != 1:
@@ -275,7 +276,7 @@ class GroundTruthMatcher:
         evaluation_id = next(iter(ids))
         return TruthMatch(evaluation_id, [evaluation_id], evidence, 'transcribed_title')
 
-    def _resolve(self, paper, ids, evidence, method):
+    def _resolve(self, paper: dict[str, Any], ids: set[str], evidence: list[str], method: str) -> TruthMatch:
         if len(ids) != 1:
             return TruthMatch(
                 candidates=sorted(ids), evidence=[*evidence, 'Multiple truth identities match'], decision='ambiguous'
@@ -295,7 +296,7 @@ class GroundTruthMatcher:
         return TruthMatch(evaluation_id, [evaluation_id], evidence, method)
 
 
-def _titles_close(left, right):
+def _titles_close(left: str, right: str) -> bool:
     """One title is the other without its subtitle, or they differ only by a typo."""
     shorter, longer = sorted((left, right), key=len)
     if len(shorter.split()) >= TRANSCRIBED_PREFIX_MINIMUM_WORDS and longer.startswith(shorter + ' '):
@@ -304,7 +305,7 @@ def _titles_close(left, right):
     return matcher.quick_ratio() >= TRANSCRIBED_TITLE_SIMILARITY and matcher.ratio() >= TRANSCRIBED_TITLE_SIMILARITY
 
 
-def bibliographic_name_agrees(left, right):
+def bibliographic_name_agrees(left: str, right: str) -> bool:
     """Same family name and compatible given names/initials, e.g. 'M. Zhu' and 'Min Zhu'."""
     first = normalize(byline_forms(left)[-1]).split()
     second = normalize(byline_forms(right)[-1]).split()
@@ -322,22 +323,22 @@ def bibliographic_name_agrees(left, right):
     return all(_name_token_agrees(a, b) for a, b in zip(middle_left, middle_right, strict=True))
 
 
-def _name_token_agrees(left, right):
+def _name_token_agrees(left: str, right: str) -> bool:
     if left == right:
         return True
     return min(len(left), len(right)) == 1 and left[0] == right[0]
 
 
-def _bibliographic_authors_agree(left, right):
+def _bibliographic_authors_agree(left: Sequence[str], right: Sequence[str]) -> bool:
     if not left or len(left) != len(right):
         return False
     choices = []
     for name in left:
         choices.append([index for index, other in enumerate(right) if bibliographic_name_agrees(name, other)])
     # A complete matching avoids greedily assigning an abbreviated name to the wrong author.
-    assigned: dict[str, Any] = {}
+    assigned: dict[int, int] = {}
 
-    def assign(position, visited):
+    def assign(position: int, visited: set[int]) -> bool:
         for index in choices[position]:
             if index in visited:
                 continue

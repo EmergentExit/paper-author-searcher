@@ -3,11 +3,12 @@
 import json
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
-from .config import DEFAULT_PDF
+from .config import DEFAULT_PDF, PDFConfig
 from .html_support import LinkExtractor, decode_response
-from .http import SourceError, has_pdf_signature, require_public_http_url
+from .http import HttpTransport, SourceError, URLProbe, has_pdf_signature, require_public_http_url
+from .json_types import JSONList, JSONObject
 from .matching import normalize_title
-from .models import PDFProviderResult
+from .models import PDFCandidate, PDFProviderResult
 from .pdf_identity import metadata_identity
 from .pdf_providers import CitationMetadata, LandingPagePDFProvider, make_candidate
 from .pdf_resource_requests import PublicResourceRequests
@@ -18,7 +19,7 @@ COUNTRY_ACADEMIC_LABELS = 3
 COUNTRY_CODE_LETTERS = 2
 
 
-def secure_page_url(url):
+def secure_page_url(url: str) -> str:
     """Prefer TLS for a supplied HTTP path; do not guess any new resource path."""
     require_public_http_url(url)
     parsed = urlsplit(url)
@@ -29,20 +30,21 @@ def secure_page_url(url):
 
 class PublicPagePDFProvider(LandingPagePDFProvider):
     name = 'public_pages'
+    client: PublicResourceRequests
 
-    def __init__(self, client, config=DEFAULT_PDF):
+    def __init__(self, client: HttpTransport, config: PDFConfig = DEFAULT_PDF) -> None:
         super().__init__(client, config)
         if not isinstance(self.client, PublicResourceRequests):
             self.client = PublicResourceRequests(self.client, self.config)
 
-    def find(self, paper):
+    def find(self, paper: JSONObject) -> PDFProviderResult:
         pages = self._pages(paper)
         for url in self.config.bibliography_urls:
             pages.setdefault(url, [])
         if not pages:
             return PDFProviderResult(self.name, status=ProviderStatus.NOT_APPLICABLE)
         result = PDFProviderResult(self.name)
-        visited = set()
+        visited: set[str] = set()
         linked_budget = {'requests': 0}
         for url, bindings in pages.items():
             try:
@@ -63,7 +65,7 @@ class PublicPagePDFProvider(LandingPagePDFProvider):
             result.status = ProviderStatus.PARTIAL if result.candidates else ProviderStatus.ERROR
         return result
 
-    def _probe(self, url):
+    def _probe(self, url: str) -> URLProbe:
         return self.client.probe(
             url,
             self.config.preview_bytes,
@@ -73,13 +75,13 @@ class PublicPagePDFProvider(LandingPagePDFProvider):
         )
 
     @staticmethod
-    def _record_response(result, url, response):
+    def _record_response(result: PDFProviderResult, url: str, response: URLProbe) -> None:
         result.diagnostics.append(
             dict(response.request_context, url=url, context='public_resource', status=ProviderStatus.OK)
         )
 
     @staticmethod
-    def _record_failure(result, url, error):
+    def _record_failure(result: PDFProviderResult, url: str, error: Exception) -> None:
         kind = getattr(error, 'error_type', 'source_error')
         request_context = getattr(error, 'request_context', {})
         if kind == 'source_deferred':
@@ -97,7 +99,14 @@ class PublicPagePDFProvider(LandingPagePDFProvider):
             }
         )
 
-    def _linked_candidates(self, paper, response, result, visited, linked_budget):
+    def _linked_candidates(
+        self,
+        paper: JSONObject,
+        response: URLProbe,
+        result: PDFProviderResult,
+        visited: set[str],
+        linked_budget: dict[str, int],
+    ) -> None:
         content = decode_response(response)
         parser = public_page_links()
         parser.feed(content)
@@ -195,7 +204,7 @@ class PublicPagePDFProvider(LandingPagePDFProvider):
         for script in parser.scripts:
             result.candidates.extend(self._structured_candidates(paper, response.url, script))
 
-    def _direct_pdf(self, paper, response, bindings):
+    def _direct_pdf(self, paper: JSONObject, response: URLProbe, bindings: JSONList) -> list[PDFCandidate]:
         candidates = super()._direct_pdf(paper, response, bindings)
         configured_hosts = {urlsplit(url).hostname for url in self.config.bibliography_urls}
         hostname = urlsplit(response.url).hostname or ''
@@ -214,7 +223,11 @@ class PublicPagePDFProvider(LandingPagePDFProvider):
             if not institutional and hostname not in configured_hosts and not declared_scholarly:
                 continue
             identity = metadata_identity(
-                paper, binding.get('database'), binding.get('source_paper_id'), binding.get('doi'), binding.get('title')
+                paper,
+                binding.get('database') or '',
+                binding.get('source_paper_id'),
+                binding.get('doi'),
+                binding.get('title'),
             )
             candidates.append(
                 make_candidate(
@@ -235,7 +248,7 @@ class PublicPagePDFProvider(LandingPagePDFProvider):
             )
         return candidates
 
-    def _structured_candidates(self, paper, url, script):
+    def _structured_candidates(self, paper: JSONObject, url: str, script: str) -> list[PDFCandidate]:
         try:
             data = json.loads(script)
         except ValueError:

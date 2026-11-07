@@ -4,9 +4,10 @@ import re
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
-from .config import DEFAULT_PDF
+from .config import DEFAULT_PDF, PDFConfig
 from .html_support import LinkExtractor, decode_response
-from .http import SourceError
+from .http import HttpTransport, SourceError
+from .json_types import JSONObject
 from .matching import normalize, normalize_title
 from .models import PDFProviderResult
 from .pdf_identity import source_records
@@ -19,11 +20,12 @@ class JournalCatalogPDFProvider(LandingPagePDFProvider):
 
     name = 'journal_catalog'
 
-    def __init__(self, client, config=DEFAULT_PDF):
+    def __init__(self, client: HttpTransport, config: PDFConfig = DEFAULT_PDF) -> None:
         super().__init__(client, config)
-        self.cache = {}
+        # url -> its links, or the failure reading it
+        self.cache: dict[str, list[dict[str, Any]] | Exception] = {}
 
-    def find(self, paper):
+    def find(self, paper: JSONObject) -> PDFProviderResult:
         venues = self._venues(paper)
         catalogs = [url for venue, url in self.config.journal_catalogs if normalize(venue) in venues]
         if not catalogs or paper.get('year') is None:
@@ -52,7 +54,7 @@ class JournalCatalogPDFProvider(LandingPagePDFProvider):
         return result
 
     @staticmethod
-    def _venues(paper):
+    def _venues(paper: JSONObject) -> set[str]:
         venues = set()
         for record in source_records(paper):
             if record.get('venue'):
@@ -63,8 +65,8 @@ class JournalCatalogPDFProvider(LandingPagePDFProvider):
                     venues.add(normalize(source['display_name']))
         return venues
 
-    def _volumes(self, catalog, year):
-        volumes = []
+    def _volumes(self, catalog: str, year: int) -> list[str]:
+        volumes: list[str] = []
         for link in self._links(catalog):
             years = [int(value) for value in re.findall(r'\b(?:19|20)\d{2}\b', link['context'])]
             if not years or not min(years) <= year <= max(years):
@@ -74,7 +76,7 @@ class JournalCatalogPDFProvider(LandingPagePDFProvider):
                 volumes.append(url)
         return volumes
 
-    def _links(self, url):
+    def _links(self, url: str) -> list[dict[str, Any]]:
         if url in self.cache:
             saved = self.cache[url]
             if isinstance(saved, Exception):
@@ -99,7 +101,7 @@ class JournalCatalogPDFProvider(LandingPagePDFProvider):
             raise
 
     @staticmethod
-    def _catalog_url(base, link):
+    def _catalog_url(base: str, link: str) -> str | None:
         target = urljoin(base, link)
         if urlsplit(target).hostname != urlsplit(base).hostname:
             return None
