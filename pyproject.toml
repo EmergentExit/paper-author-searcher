@@ -69,6 +69,8 @@ quote-style = "single"
 python_version = "3.10"
 files = ["src"]
 check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
 no_implicit_optional = true
 strict_equality = true
 warn_redundant_casts = true
@@ -89,90 +91,14 @@ ignore_missing_imports = true
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-# Fully annotated modules stay that way. Remaining modules join as Phase 3 restructures them.
+# Being restructured (paper ownership rules, resolver/anchor split); they are annotated as they are split.
 module = [
-    "paper_author_searcher",
-    "paper_author_searcher.api",
-    "paper_author_searcher.api.*",
-    "paper_author_searcher.service",
-    "paper_author_searcher.service.*",
-    "paper_author_searcher.benchmark",
-    "paper_author_searcher.benchmark.calibration",
-    "paper_author_searcher.benchmark.gate",
-    "paper_author_searcher.benchmark.identity_diagnosis",
-    "paper_author_searcher.benchmark.metrics",
-    "paper_author_searcher.benchmark.report",
-    "paper_author_searcher.benchmark.review",
-    "paper_author_searcher.benchmark.roster",
-    "paper_author_searcher.benchmark.runner",
-    "paper_author_searcher.benchmark.scoring",
-    "paper_author_searcher.benchmark.settings",
-    "paper_author_searcher.benchmark.snapshots",
-    "paper_author_searcher.benchmark.truth_builder",
-    "paper_author_searcher.benchmark.truth_sources",
-    "paper_author_searcher.candidate_diagnostics",
-    "paper_author_searcher.cli",
-    "paper_author_searcher.composition",
-    "paper_author_searcher.config",
-    "paper_author_searcher.config.*",
-    "paper_author_searcher.download_cli",
-    "paper_author_searcher.evaluation_cli",
-    "paper_author_searcher.http_budget",
-    "paper_author_searcher.http_cache",
-    "paper_author_searcher.http_decorators",
-    "paper_author_searcher.http_transport",
-    "paper_author_searcher.html_support",
-    "paper_author_searcher.identity",
-    "paper_author_searcher.contender_adjudication",
-    "paper_author_searcher.contest_layers",
-    "paper_author_searcher.byline_disambiguation",
-    "paper_author_searcher.cs_sources",
-    "paper_author_searcher.homepage_citations",
-    "paper_author_searcher.identity_adjudication",
-    "paper_author_searcher.identity_ranking",
-    "paper_author_searcher.json_types",
-    "paper_author_searcher.jsonio",
-    "paper_author_searcher.logging_config",
-    "paper_author_searcher.manifest_journal",
-    "paper_author_searcher.matching",
-    "paper_author_searcher.models",
-    "paper_author_searcher.pacing",
-    "paper_author_searcher.paper_authorship",
-    "paper_author_searcher.paper_collector",
-    "paper_author_searcher.paper_deduplication",
-    "paper_author_searcher.paper_reanalysis",
-    "paper_author_searcher.paper_types",
-    "paper_author_searcher.listed_works",
-    "paper_author_searcher.paper_views",
-    "paper_author_searcher.precision_guards",
-    "paper_author_searcher.pdf_cli",
-    "paper_author_searcher.pdf_crossref",
-    "paper_author_searcher.pdf_discovery_comparison",
-    "paper_author_searcher.pdf_document_types",
-    "paper_author_searcher.pdf_front_matter",
-    "paper_author_searcher.pdf_revalidation",
-    "paper_author_searcher.pdf_search_diagnostics",
-    "paper_author_searcher.pdf_search_status",
-    "paper_author_searcher.pdf_settings",
-    "paper_author_searcher.pdf_source_requests",
-    "paper_author_searcher.pdf_validation",
-    "paper_author_searcher.pdf_validation_benchmark",
-    "paper_author_searcher.performance_cli",
-    "paper_author_searcher.performance_diagnostics",
-    "paper_author_searcher.performance_evaluation",
-    "paper_author_searcher.progress",
-    "paper_author_searcher.reference_import",
-    "paper_author_searcher.raw_metadata",
-    "paper_author_searcher.redaction",
-    "paper_author_searcher.registry",
-    "paper_author_searcher.settings",
-    "paper_author_searcher.source_catalog",
-    "paper_author_searcher.status",
-    "paper_author_searcher.workflow",
-    "paper_author_searcher.workflow.*",
+    "paper_author_searcher.identity_anchors",
+    "paper_author_searcher.paper_ownership",
+    "paper_author_searcher.resolver",
 ]
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
 
 [tool.coverage.run]
 branch = true

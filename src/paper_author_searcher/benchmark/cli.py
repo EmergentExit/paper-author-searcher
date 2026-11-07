@@ -3,35 +3,38 @@
 import argparse
 import logging
 import subprocess
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
 from paper_author_searcher.composition import RunOptions, ServiceContainer
+from paper_author_searcher.config import MatchingConfig
 from paper_author_searcher.http import HttpClient, SourceError
 from paper_author_searcher.http_cache import CacheMode
 from paper_author_searcher.jsonio import read_json, write_json
 from paper_author_searcher.logging_config import add_logging_arguments, configure_from_arguments, log_isolated_failure
+from paper_author_searcher.resolver import ProfessorResolver
 from paper_author_searcher.settings import load_settings
 from paper_author_searcher.status import AnnotationState, OwnershipStatus, RunStatus, TruthState
 
 from .gate import ReleaseGate
 from .report import markdown_report
 from .review import REVIEW_STATES, export_review, import_review
-from .roster import Roster
+from .roster import BenchmarkPerson, Roster
 from .runner import METADATA_MODE, BenchmarkRunner, RecordedRunAnchors, WorkflowSearchSystem, load_index
 from .scoring import OVERALL, PersonScorer, aggregate, is_human_reviewed, load_truth, truth_paths
 from .settings import FULLTEXT_SCOPES, BenchmarkSettings, RunSettings
 from .snapshots import ArxivLookup, CrossrefLookup, OrcidFetcher, SnapshotCollector, missing_snapshots
 from .truth_builder import TruthBuilder
-from .truth_sources import default_registry
+from .truth_sources import TruthSourceRegistry, default_registry
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = Path('data/benchmark/v1/benchmark.json')
 
 
-def _context(args):
+def _context(args: argparse.Namespace) -> tuple[BenchmarkSettings, Roster, TruthSourceRegistry, list[str]]:
     settings = BenchmarkSettings.load(args.config)
     roster = Roster.load(settings.paths.roster)
     registry = default_registry()
@@ -46,7 +49,7 @@ def _code_version() -> str | None:
         return None
 
 
-def command_validate(args) -> int:
+def command_validate(args: argparse.Namespace) -> int:
     settings, roster, _registry, warnings = _context(args)
     print(f'Roster {roster.dataset_id}: {len(roster.people)} people')
     for (dimension, value), count in sorted(roster.stratum_sizes(settings).items()):
@@ -68,7 +71,7 @@ def command_validate(args) -> int:
     return 0 if not problems and not warnings else 2
 
 
-def command_fetch(args) -> int:
+def command_fetch(args: argparse.Namespace) -> int:
     settings, roster, registry, _warnings = _context(args)
     client = HttpClient(timeout=args.timeout, retries=args.retries)
     collector = SnapshotCollector(
@@ -88,7 +91,7 @@ def command_fetch(args) -> int:
     return 0 if not failures else 2
 
 
-def command_build(args) -> int:
+def command_build(args: argparse.Namespace) -> int:
     settings, roster, registry, _warnings = _context(args)
     builder = TruthBuilder(settings, registry)
     settings.paths.truth.mkdir(parents=True, exist_ok=True)
@@ -109,7 +112,7 @@ def command_build(args) -> int:
     return 0
 
 
-def command_review_export(args) -> int:
+def command_review_export(args: argparse.Namespace) -> int:
     settings, _roster, _registry, _warnings = _context(args)
     reviewed, pending = truth_paths(settings, args.person)
     source = reviewed if reviewed.exists() else pending
@@ -140,11 +143,11 @@ def command_review_export(args) -> int:
     return 0
 
 
-def roster_person(settings, person_id):
+def roster_person(settings: BenchmarkSettings, person_id: str) -> BenchmarkPerson:
     return Roster.load(settings.paths.roster).select([person_id])[0]
 
 
-def command_review_import(args) -> int:
+def command_review_import(args: argparse.Namespace) -> int:
     settings, _roster, _registry, _warnings = _context(args)
     reviewed_path, pending_path = truth_paths(settings, args.person)
     truth = read_json(reviewed_path if reviewed_path.exists() else pending_path)
@@ -178,7 +181,7 @@ def replay_settings(run: RunSettings, record_misses: bool, mode: str | None) -> 
     return replace(run, http_cache_mode=CacheMode.REPLAY.value, mode=METADATA_MODE)
 
 
-def command_run(args) -> int:
+def command_run(args: argparse.Namespace) -> int:
     settings, roster, _registry, warnings = _context(args)
     for warning in warnings:
         logger.warning(warning)
@@ -233,7 +236,7 @@ def score_run(settings: BenchmarkSettings, roster: Roster, run_id: str, person_i
     }
 
 
-def command_score(args) -> int:
+def command_score(args: argparse.Namespace) -> int:
     settings, roster, _registry, _warnings = _context(args)
     scored = score_run(settings, roster, args.run_id, args.person)
     settings.paths.reports.mkdir(parents=True, exist_ok=True)
@@ -244,7 +247,7 @@ def command_score(args) -> int:
     return scored['gate']['exit_code'] if args.enforce_gate else 0
 
 
-def command_decisions(args) -> int:
+def command_decisions(args: argparse.Namespace) -> int:
     from . import decisions
 
     settings = BenchmarkSettings.load(args.config)
@@ -255,7 +258,7 @@ def command_decisions(args) -> int:
     return 0
 
 
-def command_compare_decisions(args) -> int:
+def command_compare_decisions(args: argparse.Namespace) -> int:
     from . import decisions
 
     settings = BenchmarkSettings.load(args.config)
@@ -270,7 +273,7 @@ def command_compare_decisions(args) -> int:
     return 1 if differences else 0
 
 
-def command_timings(args) -> int:
+def command_timings(args: argparse.Namespace) -> int:
     from .timing_report import markdown, summarize
 
     settings = BenchmarkSettings.load(args.config)
@@ -282,7 +285,7 @@ def command_timings(args) -> int:
     return 0
 
 
-def command_diagnose(args) -> int:
+def command_diagnose(args: argparse.Namespace) -> int:
     from paper_author_searcher.http_budget import ledger_summary
 
     from .identity_diagnosis import IdentityDiagnoser, WorkLister, markdown
@@ -334,7 +337,7 @@ def command_diagnose(args) -> int:
     return 0
 
 
-def command_calibrate(args) -> int:
+def command_calibrate(args: argparse.Namespace) -> int:
     from .calibration import IdentityCalibrator, markdown
 
     settings, roster, _registry, _warnings = _context(args)
@@ -352,7 +355,7 @@ def command_calibrate(args) -> int:
     base = ServiceContainer(load_settings(run), replace(RunOptions.from_namespace(run), llm_adjudication=False))
     service = base.settings
 
-    def resolver_factory(config):
+    def resolver_factory(config: MatchingConfig) -> ProfessorResolver:
         return base.with_settings(replace(service, matching=config)).resolver
 
     calibration = settings.calibration
@@ -511,7 +514,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv=None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     add_logging_arguments(parser)
     args = parser.parse_args(argv)
