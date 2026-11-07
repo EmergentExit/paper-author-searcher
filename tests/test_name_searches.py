@@ -3,12 +3,8 @@
 import unittest
 from dataclasses import replace
 
-from paper_author_searcher.composition import RunOptions, ServiceContainer
-from paper_author_searcher.config import DEFAULT_LISTED_WORKS, DEFAULT_NAME_SEARCHES
-from paper_author_searcher.listed_works import AuthorMatcher
-from paper_author_searcher.matching import institution_mentioned, school_initialism, school_named
-from paper_author_searcher.models import ProfessorProfile
-from paper_author_searcher.name_searches import (
+from paper_author_searcher.collection.listed_works import AuthorMatcher
+from paper_author_searcher.collection.name_searches import (
     CoreWorkLookup,
     CrossrefAuthorSearch,
     EuropePmcAuthorSearch,
@@ -16,7 +12,11 @@ from paper_author_searcher.name_searches import (
     OpenAlexSiblingSearch,
     initials,
 )
-from paper_author_searcher.paper_providers import OpenAlexPaperProvider
+from paper_author_searcher.collection.paper_providers import OpenAlexPaperProvider
+from paper_author_searcher.composition import RunOptions, ServiceContainer
+from paper_author_searcher.config import DEFAULT_LISTED_WORKS, DEFAULT_NAME_SEARCHES
+from paper_author_searcher.matching import institution_mentioned, school_initialism, school_named
+from paper_author_searcher.models import ProfessorProfile
 from paper_author_searcher.settings import Credentials, Settings
 
 ORCID = '0000-0002-1825-0097'

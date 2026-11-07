@@ -3,12 +3,12 @@ from dataclasses import replace
 from unittest.mock import Mock, patch
 
 from paper_author_searcher.config import DEFAULT_PDF
-from paper_author_searcher.http import SourceError, URLProbe
-from paper_author_searcher.pdf_document_types import classify_document
-from paper_author_searcher.pdf_file_validation import content_identity
-from paper_author_searcher.pdf_front_matter import authors_present, metadata_title_kind, title_in_region
-from paper_author_searcher.pdf_resource_requests import PublicResourceRequests
-from paper_author_searcher.pdf_source_requests import SemanticScholarRequests
+from paper_author_searcher.fulltext.pdf_document_types import classify_document
+from paper_author_searcher.fulltext.pdf_file_validation import content_identity
+from paper_author_searcher.fulltext.pdf_front_matter import authors_present, metadata_title_kind, title_in_region
+from paper_author_searcher.fulltext.pdf_resource_requests import PublicResourceRequests
+from paper_author_searcher.fulltext.pdf_source_requests import SemanticScholarRequests
+from paper_author_searcher.transport.http import SourceError, URLProbe
 
 
 def target():
@@ -220,7 +220,7 @@ class PublicRequestTests(unittest.TestCase):
             URLProbe('https://other.example.edu/article', 200, 'text/html', {}, b'short'),
         ]
         requests = self.requests(client)
-        with patch('paper_author_searcher.pdf_resource_requests.time.monotonic', return_value=10):
+        with patch('paper_author_searcher.fulltext.pdf_resource_requests.time.monotonic', return_value=10):
             with self.assertRaises(SourceError):
                 requests.probe('https://repo.example.edu/one', 16, 64)
             with self.assertRaises(SourceError) as raised:
@@ -239,10 +239,10 @@ class PublicRequestTests(unittest.TestCase):
             URLProbe(url, 200, 'text/html', {}, b'short'),
         ]
         requests = self.requests(client)
-        with patch('paper_author_searcher.pdf_resource_requests.time.monotonic', return_value=0):
+        with patch('paper_author_searcher.fulltext.pdf_resource_requests.time.monotonic', return_value=0):
             with self.assertRaises(SourceError):
                 requests.probe(url, 16, 64)
-        with patch('paper_author_searcher.pdf_resource_requests.time.monotonic', return_value=1000):
+        with patch('paper_author_searcher.fulltext.pdf_resource_requests.time.monotonic', return_value=1000):
             self.assertTrue(requests.probe(url, 16, 64).body_complete)
 
     def test_404_cached_per_url_not_entire_host(self):
@@ -263,11 +263,11 @@ class PublicRequestTests(unittest.TestCase):
         client = Mock()
         client.get.side_effect = SourceError('HTTP 429', 429)
         requests = SemanticScholarRequests(client, config=replace(DEFAULT_PDF, semantic_scholar_request_interval=0))
-        with patch('paper_author_searcher.pdf_source_requests.time.monotonic', return_value=0):
+        with patch('paper_author_searcher.fulltext.pdf_source_requests.time.monotonic', return_value=0):
             with self.assertRaises(SourceError):
                 requests.work('one')
             self.assertEqual(requests.cooldown_until, 30)
-        with patch('paper_author_searcher.pdf_source_requests.time.monotonic', return_value=31):
+        with patch('paper_author_searcher.fulltext.pdf_source_requests.time.monotonic', return_value=31):
             with self.assertRaises(SourceError):
                 requests.work('two')
             self.assertEqual(requests.cooldown_until, 91)

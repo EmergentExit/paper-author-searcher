@@ -2,14 +2,14 @@ import unittest
 from dataclasses import replace
 from unittest.mock import Mock
 
-from paper_author_searcher.config import DEFAULT_PDF
-from paper_author_searcher.paper_views import (
+from paper_author_searcher.collection.paper_views import (
     MAX_HISTORY,
     bibliographic_view,
     extend_history,
     full_paper_metadata,
 )
-from paper_author_searcher.pdf_resolver import PDFResolver
+from paper_author_searcher.config import DEFAULT_PDF
+from paper_author_searcher.fulltext.pdf_resolver import PDFResolver
 
 
 def collected_paper():

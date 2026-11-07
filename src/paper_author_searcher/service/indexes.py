@@ -19,8 +19,8 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 
+from paper_author_searcher.collection.dblp_dump import DblpDumpIndexer
 from paper_author_searcher.composition import RunOptions, ServiceContainer
-from paper_author_searcher.dblp_dump import DblpDumpIndexer
 from paper_author_searcher.settings import Settings
 
 logger = logging.getLogger(__name__)

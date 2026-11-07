@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from paper_author_searcher.http_budget import BudgetExceeded
+from paper_author_searcher.transport.http_budget import BudgetExceeded
 
 logger = logging.getLogger(__name__)
 

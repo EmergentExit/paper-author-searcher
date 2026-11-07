@@ -3,8 +3,8 @@
 import unittest
 from dataclasses import replace
 
-from paper_author_searcher.career import CareerTimeline, OrcidCareer, StatedCareer
 from paper_author_searcher.models import AnchorEvidence, CareerPosition, ProfessorProfile
+from paper_author_searcher.resolution.career import CareerTimeline, OrcidCareer, StatedCareer
 from paper_author_searcher.status import AnchorKind
 
 ORCID = '0000-0002-1825-0097'
@@ -84,7 +84,7 @@ class SourceTests(unittest.TestCase):
 
 class SavedResultTests(unittest.TestCase):
     def test_a_saved_collection_keeps_the_career_its_checks_used(self):
-        from paper_author_searcher.paper_reanalysis import saved_collection_profile
+        from paper_author_searcher.collection.paper_reanalysis import saved_collection_profile
 
         stored = {'institution': 'Stanford University', 'source': 'stated', 'start_year': None, 'end_year': None}
         saved = {

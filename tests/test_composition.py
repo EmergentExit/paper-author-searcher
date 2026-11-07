@@ -8,26 +8,27 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from paper_author_searcher.composition import RunOptions, ServiceContainer
-from paper_author_searcher.http_budget import BudgetedHttpClient
-from paper_author_searcher.http_cache import CachingHttpClient, OfflineHttpClient
 from paper_author_searcher.models import ProfessorQuery
 from paper_author_searcher.settings import Settings
 from paper_author_searcher.timings import TimedHttpClient
+from paper_author_searcher.transport.http_budget import BudgetedHttpClient
+from paper_author_searcher.transport.http_cache import CachingHttpClient, OfflineHttpClient
 from paper_author_searcher.workflow import PaperSearchWorkflow
 
 PACKAGE = Path(__file__).resolve().parents[1] / 'src' / 'paper_author_searcher'
-CLI_MODULES = {
-    'cli',
-    'workflow_cli',
-    'pdf_cli',
-    'download_cli',
-    'evaluation_cli',
-    'performance_cli',
-    'dblp_cli',
-    'catalog_cli',
-}
-# Modules allowed to construct the network transport: the composition root and command entry points.
-TRANSPORT_OWNERS = {'composition.py', 'reference_import.py', 'benchmark/cli.py'}
+# Entry points: every command line lives in cli/, plus the benchmark's own.
+CLI_PACKAGE = 'cli'
+BENCHMARK_CLI = 'benchmark/cli.py'
+TRANSPORT_OWNERS = {'composition.py', 'collection/reference_import.py', BENCHMARK_CLI}
+
+
+def is_entry_point(relative: str) -> bool:
+    return relative.startswith(CLI_PACKAGE + '/') or relative == BENCHMARK_CLI
+
+
+def imports_entry_point(module: str) -> bool:
+    parts = module.split('.')
+    return CLI_PACKAGE in parts or module.endswith('benchmark.cli')
 
 
 class RunOptionsTests(unittest.TestCase):
@@ -134,7 +135,7 @@ class LayeringTests(unittest.TestCase):
         offenders = []
         for path in PACKAGE.rglob('*.py'):
             relative = str(path.relative_to(PACKAGE))
-            if relative in TRANSPORT_OWNERS or path.stem in CLI_MODULES:
+            if relative in TRANSPORT_OWNERS or is_entry_point(relative):
                 continue
             for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
                 if isinstance(node, ast.Call) and getattr(node.func, 'id', None) == 'HttpClient':
@@ -143,15 +144,16 @@ class LayeringTests(unittest.TestCase):
 
     def test_library_modules_never_import_entry_points(self):
         offenders = []
+        checked = 0
         for path in PACKAGE.rglob('*.py'):
-            module = path.stem
-            if module in CLI_MODULES or (path.parent.name == 'benchmark' and module == 'cli'):
+            relative = str(path.relative_to(PACKAGE))
+            if is_entry_point(relative):
                 continue
+            checked += 1
             for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
-                if isinstance(node, ast.ImportFrom) and node.module:
-                    imported = node.module.rsplit('.', 1)[-1]
-                    if imported in CLI_MODULES:
-                        offenders.append(f'{path.relative_to(PACKAGE)}:{node.lineno} imports {node.module}')
+                if isinstance(node, ast.ImportFrom) and node.module and imports_entry_point(node.module):
+                    offenders.append(f'{relative}:{node.lineno} imports {node.module}')
+        self.assertGreater(checked, 100)
         self.assertEqual(offenders, [], 'build services through paper_author_searcher.composition')
 
 

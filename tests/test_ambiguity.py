@@ -1,7 +1,7 @@
 import unittest
 
 from paper_author_searcher import AuthorCandidate, ProfessorQuery, ProfessorResolver
-from paper_author_searcher.cli import summary
+from paper_author_searcher.cli.resolve import summary
 from test_resolver import Provider
 
 

@@ -11,23 +11,33 @@ from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from .authorship_places import AuthorshipPlaces
-from .byline_disambiguation import BylineDisambiguator
-from .career import STATED_SOURCE, CareerSource, CareerTimeline, OrcidCareer, StatedCareer
+from .collection.authorship_places import AuthorshipPlaces
+from .collection.contender_adjudication import DepartmentAdjudicator
+from .collection.cs_sources import OpenReviewProfiles
+from .collection.dblp_dump import DblpDumpIndex
+from .collection.listed_works import ListedWorkRetriever
+from .collection.name_rarity import NameRarity
+from .collection.paper_collector import NameSearch, PaperCollector
+from .collection.paper_ownership import PaperOwnershipValidator
+from .collection.paper_providers import PaperProvider
+from .collection.precision_guards import CommonNamePolicy, DepartmentMatcher, PrecisionGuard
+from .collection.venue_catalogs import CatalogIndexer, CatalogStore, catalog_sources, probe_fetch
 from .config import CollectionConfig, DownloadConfig, PDFConfig
-from .contender_adjudication import DepartmentAdjudicator
-from .cs_sources import OpenReviewProfiles
-from .curated_positions import PositionMatcher
-from .dblp_discovery import DblpProfileDiscovery
-from .dblp_dump import DblpDumpIndex
-from .homepage_citations import DocumentParser, HtmlCitationParser, PdfCitationParser
-from .http import HttpClient, HttpTransport
-from .http_budget import CostLedger, DailyBudget, budgeted_client, shared_ledger
-from .http_cache import cached_client
-from .http_deadline import DeadlineHttpClient, SearchDeadline
-from .http_decorators import PacedHttpClient
-from .identity_anchors import AnchorFinder, ScholarlyAnchorFinder
-from .identity_discovery import (
+from .fulltext.pdf_file_validation import FileValidator, PDFFileValidator
+from .fulltext.pdf_front_page import ClaudeFrontPageReader, FrontPageReader, FrontPageValidator, LayoutFrontPageReader
+from .fulltext.pdf_providers import PDFProvider, WebSearchPDFProvider
+from .fulltext.pdf_public_pages import PublicPagePDFProvider
+from .fulltext.pdf_resolver import PDFResolver
+from .fulltext.pdf_resource_requests import PublicResourceRequests
+from .fulltext.pdf_validation import PDFURLValidator
+from .progress import ProgressReporter
+from .resolution.anchoring import AnchorFinder, ScholarlyAnchorFinder
+from .resolution.byline_disambiguation import BylineDisambiguator
+from .resolution.career import STATED_SOURCE, CareerSource, CareerTimeline, OrcidCareer, StatedCareer
+from .resolution.curated_positions import PositionMatcher
+from .resolution.dblp_discovery import DblpProfileDiscovery
+from .resolution.homepage_citations import DocumentParser, HtmlCitationParser, PdfCitationParser
+from .resolution.identity_discovery import (
     DiscoveryStep,
     IdentityDiscovery,
     OrcidRegistrySearch,
@@ -35,26 +45,11 @@ from .identity_discovery import (
     PageRanker,
     WebPageSearch,
 )
-from .institution_names import InstitutionNames
-from .listed_works import ListedWorkRetriever
-from .name_rarity import NameRarity
-from .orcid_affiliations import OrcidAffiliations
-from .pacing import Pacer, RequestPacer
-from .paper_collector import NameSearch, PaperCollector
-from .paper_ownership import PaperOwnershipValidator
-from .paper_providers import PaperProvider
-from .pdf_file_validation import FileValidator, PDFFileValidator
-from .pdf_front_page import ClaudeFrontPageReader, FrontPageReader, FrontPageValidator, LayoutFrontPageReader
-from .pdf_providers import PDFProvider, WebSearchPDFProvider
-from .pdf_public_pages import PublicPagePDFProvider
-from .pdf_resolver import PDFResolver
-from .pdf_resource_requests import PublicResourceRequests
-from .pdf_validation import PDFURLValidator
-from .precision_guards import CommonNamePolicy, DepartmentMatcher, PrecisionGuard
-from .profile_links import ProfileLinkParser
-from .progress import ProgressReporter
-from .providers import AuthorProvider
-from .publication_extraction import (
+from .resolution.institution_names import InstitutionNames
+from .resolution.orcid_affiliations import OrcidAffiliations
+from .resolution.profile_links import ProfileLinkParser
+from .resolution.providers import AuthorProvider
+from .resolution.publication_extraction import (
     CachedJsonCompletion,
     ClaudeJsonCompletion,
     JsonCompletion,
@@ -63,17 +58,22 @@ from .publication_extraction import (
     LlmPublicationExtractor,
     MergedCitationParser,
 )
-from .resolver import ProfessorResolver
+from .resolution.resolver import ProfessorResolver
 from .settings import Settings
 from .source_catalog import IDENTITY_SOURCES, NAME_SEARCHES, PAPER_SOURCES, PDF_SOURCES, WEB_SEARCH, WORK_LOOKUPS
 from .timings import HttpMeter, TimedHttpClient
-from .venue_catalogs import CatalogIndexer, CatalogStore, catalog_sources, probe_fetch
-from .web_search import FallbackWebSearch, WebSearch
+from .transport.http import HttpClient, HttpTransport
+from .transport.http_budget import CostLedger, DailyBudget, budgeted_client, shared_ledger
+from .transport.http_cache import cached_client
+from .transport.http_deadline import DeadlineHttpClient, SearchDeadline
+from .transport.http_decorators import PacedHttpClient
+from .transport.pacing import Pacer, RequestPacer
+from .transport.web_search import FallbackWebSearch, WebSearch
 from .workflow import PaperSearchWorkflow
 
 if TYPE_CHECKING:
-    from .identity_adjudication import IdentityAdjudicator
-    from .pdf_downloader import PDFDownloader
+    from .fulltext.pdf_downloader import PDFDownloader
+    from .resolution.identity_adjudication import IdentityAdjudicator
 
 FULL_MODE = 'full'
 BYTES_PER_MEGABYTE = 1024 * 1024
@@ -515,7 +515,7 @@ class ServiceContainer:
 
     @cached_property
     def downloader(self) -> 'PDFDownloader':
-        from .pdf_downloader import PDFDownloader  # deferred: needs the optional "download" extra (pypdf)
+        from .fulltext.pdf_downloader import PDFDownloader  # deferred: needs the optional "download" extra (pypdf)
 
         config = self.download_config
         validator: FileValidator = PDFFileValidator(config)
@@ -546,6 +546,6 @@ class ServiceContainer:
 
 
 def _claude_adjudicator() -> 'IdentityAdjudicator':
-    from .identity_adjudication import ClaudeIdentityAdjudicator  # deferred: optional "llm" extra
+    from .resolution.identity_adjudication import ClaudeIdentityAdjudicator  # deferred: optional "llm" extra
 
     return ClaudeIdentityAdjudicator()

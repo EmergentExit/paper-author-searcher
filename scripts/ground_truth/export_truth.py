@@ -10,8 +10,8 @@ from pathlib import Path
 from scripts.ground_truth.build_candidates import read_json, write_json
 from scripts.ground_truth.review_candidates import _date, _evidence, validate_reviews
 
-from paper_author_searcher.evaluation_matching import GroundTruth
 from paper_author_searcher.matching import canonical_doi
+from paper_author_searcher.quality.evaluation_matching import GroundTruth
 
 
 def human_attestation(value):

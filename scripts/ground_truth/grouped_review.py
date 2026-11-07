@@ -11,8 +11,8 @@ from scripts.ground_truth.build_candidates import FACT_COLUMNS, REVIEW_COLUMNS, 
 from scripts.ground_truth.evaluate_pilot import fingerprint
 from scripts.ground_truth.review_candidates import validate_reviews
 
-from paper_author_searcher.evaluation_matching import _bibliographic_authors_agree
 from paper_author_searcher.matching import canonical_doi, normalize
+from paper_author_searcher.quality.evaluation_matching import _bibliographic_authors_agree
 
 
 def _compatible_members(left, right):

@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
-from paper_author_searcher.http import SourceError
 from paper_author_searcher.models import ProfessorQuery
 from paper_author_searcher.timings import HttpMeter, PhaseTimings, TimedHttpClient, phase, recording
+from paper_author_searcher.transport.http import SourceError
 from paper_author_searcher.workflow import PaperSearchWorkflow
 from paper_author_searcher.workflow.stages import WorkflowStage
 

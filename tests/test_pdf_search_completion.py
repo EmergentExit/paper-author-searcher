@@ -6,13 +6,13 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 
 from paper_author_searcher.config import DEFAULT_PDF
-from paper_author_searcher.http import HttpClient, SourceError, URLProbe
+from paper_author_searcher.fulltext.pdf_downloader import PDFDownloader
+from paper_author_searcher.fulltext.pdf_public_pages import PublicPagePDFProvider
+from paper_author_searcher.fulltext.pdf_resource_requests import PublicResourceRequests
+from paper_author_searcher.fulltext.pdf_search_diagnostics import _resource_statistics, solely_deferred
+from paper_author_searcher.fulltext.pdf_search_status import paper_search_complete, search_satisfaction
 from paper_author_searcher.models import PDFFileValidation
-from paper_author_searcher.pdf_downloader import PDFDownloader
-from paper_author_searcher.pdf_public_pages import PublicPagePDFProvider
-from paper_author_searcher.pdf_resource_requests import PublicResourceRequests
-from paper_author_searcher.pdf_search_diagnostics import _resource_statistics, solely_deferred
-from paper_author_searcher.pdf_search_status import paper_search_complete, search_satisfaction
+from paper_author_searcher.transport.http import HttpClient, SourceError, URLProbe
 from test_http import Response
 from test_pdf_downloader import fake_client, target
 
@@ -41,7 +41,7 @@ class RoutingTests(unittest.TestCase):
     def test_observed_redirect_cooldown_skips_original_request_and_expires(self):
         client, requests = self.requests()
         url = 'https://legacy.example.edu/one'
-        with patch('paper_author_searcher.pdf_resource_requests.time.monotonic', return_value=0):
+        with patch('paper_author_searcher.fulltext.pdf_resource_requests.time.monotonic', return_value=0):
             with self.assertRaises(SourceError):
                 requests.probe(url)
             with self.assertRaises(SourceError) as raised:
@@ -50,13 +50,13 @@ class RoutingTests(unittest.TestCase):
             self.assertFalse(raised.exception.request_context['request_attempted'])
         self.assertEqual(client.urls, [url])
         self.assertEqual(requests.statistics['request_failures'], 1)
-        with patch('paper_author_searcher.pdf_resource_requests.time.monotonic', return_value=121):
+        with patch('paper_author_searcher.fulltext.pdf_resource_requests.time.monotonic', return_value=121):
             requests.probe(url)
         self.assertEqual(client.urls, [url, url])
 
     def test_repeated_route_failures_defer_fallback_source_without_hitting_origin_again(self):
         client, requests = self.requests()
-        with patch('paper_author_searcher.pdf_resource_requests.time.monotonic', return_value=0):
+        with patch('paper_author_searcher.fulltext.pdf_resource_requests.time.monotonic', return_value=0):
             for index in range(3):
                 with self.assertRaises(SourceError):
                     requests.probe('https://legacy.example.edu/' + str(index), allow_source_backpressure=True)
@@ -72,7 +72,7 @@ class RoutingTests(unittest.TestCase):
 
     def test_gateway_with_multiple_observed_destinations_is_not_deferred_as_one_source(self):
         client, requests = self.requests()
-        with patch('paper_author_searcher.pdf_resource_requests.time.monotonic', return_value=0):
+        with patch('paper_author_searcher.fulltext.pdf_resource_requests.time.monotonic', return_value=0):
             for index in range(3):
                 with self.assertRaises(SourceError):
                     requests.probe('https://gateway.example.edu/' + str(index), allow_source_backpressure=True)
@@ -84,7 +84,7 @@ class RoutingTests(unittest.TestCase):
 
     def test_source_backpressure_requires_fallback_opt_in(self):
         client, requests = self.requests()
-        with patch('paper_author_searcher.pdf_resource_requests.time.monotonic', return_value=0):
+        with patch('paper_author_searcher.fulltext.pdf_resource_requests.time.monotonic', return_value=0):
             for index in range(4):
                 with self.assertRaises(SourceError):
                     requests.probe('https://legacy.example.edu/' + str(index))
@@ -207,7 +207,7 @@ class BudgetTests(unittest.TestCase):
             'failures': 1,
             'error': SourceError('HTTP 429', 429),
         }
-        with patch('paper_author_searcher.pdf_resource_requests.time.monotonic', return_value=0):
+        with patch('paper_author_searcher.fulltext.pdf_resource_requests.time.monotonic', return_value=0):
             result = PublicPagePDFProvider(requests, config).find(dict(target(), paper_url=main))
         self.assertEqual(client.probe.call_count, 2)
         self.assertEqual(len(result.candidates), 1)
@@ -240,10 +240,10 @@ class TransportTests(unittest.TestCase):
         client = HttpClient(retries=1)
         with (
             patch(
-                'paper_author_searcher.http_transport.KeepAliveTransport.open',
+                'paper_author_searcher.transport.http_transport.KeepAliveTransport.open',
                 side_effect=[error, Response(b'{}', 'application/json')],
             ),
-            patch('paper_author_searcher.http.time.sleep'),
+            patch('paper_author_searcher.transport.http.time.sleep'),
         ):
             client.get('https://api.example.edu/paper')
         stats = client.transport_statistics['metadata_get']
@@ -254,7 +254,7 @@ class TransportTests(unittest.TestCase):
     def test_redirect_guard_error_does_not_count_as_an_http_429_response(self):
         client = HttpClient(retries=1)
         with patch(
-            'paper_author_searcher.http_transport.KeepAliveTransport.open',
+            'paper_author_searcher.transport.http_transport.KeepAliveTransport.open',
             side_effect=SourceError('destination cooling', 429, error_type='source_deferred'),
         ):
             with self.assertRaises(SourceError):

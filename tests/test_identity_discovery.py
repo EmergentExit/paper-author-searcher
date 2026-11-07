@@ -4,11 +4,11 @@ import unittest
 from dataclasses import replace
 
 from paper_author_searcher import ProfessorQuery as Q
+from paper_author_searcher.collection.precision_guards import DepartmentMatcher
 from paper_author_searcher.composition import RunOptions, ServiceContainer
 from paper_author_searcher.config import DEFAULT_DISCOVERY, DiscoveryConfig, ProfileLinkConfig
-from paper_author_searcher.http import SourceError, URLProbe
-from paper_author_searcher.identity_anchors import RecordedAnchorFinder, ScholarlyAnchorFinder, publication_links
-from paper_author_searcher.identity_discovery import (
+from paper_author_searcher.resolution.anchoring import RecordedAnchorFinder, ScholarlyAnchorFinder, publication_links
+from paper_author_searcher.resolution.identity_discovery import (
     DiscoveredPage,
     Discovery,
     IdentityDiscovery,
@@ -18,12 +18,12 @@ from paper_author_searcher.identity_discovery import (
     WebPageSearch,
     split_name,
 )
-from paper_author_searcher.precision_guards import DepartmentMatcher
-from paper_author_searcher.profile_links import ProfileLinkParser
+from paper_author_searcher.resolution.profile_links import ProfileLinkParser
 from paper_author_searcher.settings import Credentials, Settings
 from paper_author_searcher.source_catalog import WEB_SEARCH
 from paper_author_searcher.status import AnchorKind
-from paper_author_searcher.web_search import BraveSearch, ExaSearch, SearchHit, TavilySearch
+from paper_author_searcher.transport.http import SourceError, URLProbe
+from paper_author_searcher.transport.web_search import BraveSearch, ExaSearch, SearchHit, TavilySearch
 
 ORCID = '0000-0002-1825-0097'
 

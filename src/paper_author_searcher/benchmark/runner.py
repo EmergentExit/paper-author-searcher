@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from paper_author_searcher.composition import RunOptions, ServiceContainer
-from paper_author_searcher.evaluation_matching import GroundTruth, GroundTruthMatcher
-from paper_author_searcher.identity_anchors import AnchorFinder, RecordedAnchorFinder
 from paper_author_searcher.jsonio import read_json, write_json
+from paper_author_searcher.quality.evaluation_matching import GroundTruth, GroundTruthMatcher
+from paper_author_searcher.resolution.anchoring import AnchorFinder, RecordedAnchorFinder
 from paper_author_searcher.settings import load_settings
 from paper_author_searcher.status import RunStatus
 from paper_author_searcher.workflow import PaperSearchWorkflow
@@ -239,7 +239,7 @@ class BenchmarkRunner:
         return index
 
     def budget_summary(self) -> dict | None:
-        from paper_author_searcher.http_budget import ledger_summary
+        from paper_author_searcher.transport.http_budget import ledger_summary
 
         return ledger_summary(self.settings.run.cost_ledger)
 

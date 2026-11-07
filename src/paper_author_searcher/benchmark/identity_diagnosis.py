@@ -10,9 +10,9 @@ from enum import Enum
 from typing import Any
 
 from paper_author_searcher.config import DEFAULT_MATCHING
-from paper_author_searcher.http import SourceError
 from paper_author_searcher.matching import canonical_doi, normalize
 from paper_author_searcher.status import UniversityStatus
+from paper_author_searcher.transport.http import SourceError
 
 from .roster import BenchmarkPerson
 

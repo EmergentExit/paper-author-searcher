@@ -3,10 +3,8 @@
 import dataclasses
 import unittest
 
-from paper_author_searcher.config import DEFAULT_COLLECTION, ListedWorksConfig, OwnershipConfig
-from paper_author_searcher.contender_adjudication import DepartmentAdjudicator
-from paper_author_searcher.http import SourceError
-from paper_author_searcher.listed_works import (
+from paper_author_searcher.collection.contender_adjudication import DepartmentAdjudicator
+from paper_author_searcher.collection.listed_works import (
     RETRIEVED_EVIDENCE,
     ArxivWorkLookup,
     AuthorMatcher,
@@ -14,10 +12,12 @@ from paper_author_searcher.listed_works import (
     ListedWorkRetriever,
     OpenAlexWorkLookup,
 )
+from paper_author_searcher.collection.paper_deduplication import deduplicate_papers
+from paper_author_searcher.collection.paper_ownership import LISTED_CLAIM, PaperOwnershipValidator
+from paper_author_searcher.collection.paper_providers import OpenAlexPaperProvider
+from paper_author_searcher.config import DEFAULT_COLLECTION, ListedWorksConfig, OwnershipConfig
 from paper_author_searcher.models import PaperRecord, ProfessorProfile
-from paper_author_searcher.paper_deduplication import deduplicate_papers
-from paper_author_searcher.paper_ownership import LISTED_CLAIM, PaperOwnershipValidator
-from paper_author_searcher.paper_providers import OpenAlexPaperProvider
+from paper_author_searcher.transport.http import SourceError
 
 
 def work(title, doi, author_id='https://openalex.org/A9', name='Mei Lin'):

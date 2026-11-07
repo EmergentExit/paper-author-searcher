@@ -5,9 +5,9 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request
 
 from paper_author_searcher.config import PDFConfig
-from paper_author_searcher.http import HttpClient, PublicRedirectHandler, SourceError, URLProbe
+from paper_author_searcher.fulltext.pdf_validation import PDFURLValidator
 from paper_author_searcher.models import PDFCandidate
-from paper_author_searcher.pdf_validation import PDFURLValidator
+from paper_author_searcher.transport.http import HttpClient, PublicRedirectHandler, SourceError, URLProbe
 
 URL = 'https://repository.example.edu/paper.pdf'
 
@@ -147,7 +147,7 @@ class ProbeTests(unittest.TestCase):
         response = Response()
         opener = Mock()
         opener.open.return_value = response
-        with patch('paper_author_searcher.http.secure_download_opener', return_value=opener) as safe_opener:
+        with patch('paper_author_searcher.transport.http.secure_download_opener', return_value=opener) as safe_opener:
             probe = HttpClient().probe(URL, maximum_bytes=128)
         self.assertEqual(safe_opener.call_args[0][1], (80, 443))
         self.assertEqual(len(probe.prefix), 128)
@@ -160,18 +160,18 @@ class ProbeTests(unittest.TestCase):
     def test_html_probe_does_not_expand_pdf_read_limit(self):
         opener = Mock()
         opener.open.return_value = Response()
-        with patch('paper_author_searcher.http.secure_download_opener', return_value=opener):
+        with patch('paper_author_searcher.transport.http.secure_download_opener', return_value=opener):
             self.assertEqual(len(HttpClient().probe(URL, 64, html_bytes=1024).prefix), 64)
         opener.open.return_value = Response('text/html', b'x' * 10000)
-        with patch('paper_author_searcher.http.secure_download_opener', return_value=opener):
+        with patch('paper_author_searcher.transport.http.secure_download_opener', return_value=opener):
             self.assertEqual(len(HttpClient().probe(URL, 64, html_bytes=1024).prefix), 1024)
 
     def test_http_rate_limit_retries_bounded(self):
         opener = Mock()
         opener.open.side_effect = [HTTPError(URL, 429, 'limit', {'Retry-After': '3'}, None), Response()]
         with (
-            patch('paper_author_searcher.http.secure_download_opener', return_value=opener),
-            patch('paper_author_searcher.http.time.sleep') as sleep,
+            patch('paper_author_searcher.transport.http.secure_download_opener', return_value=opener),
+            patch('paper_author_searcher.transport.http.time.sleep') as sleep,
         ):
             self.assertEqual(HttpClient(retries=1).probe(URL).status, 200)
         self.assertEqual(sleep.call_args[0][0], 3)
@@ -181,8 +181,8 @@ class ProbeTests(unittest.TestCase):
         opener = Mock()
         opener.open.side_effect = URLError('timed out')
         with (
-            patch('paper_author_searcher.http.secure_download_opener', return_value=opener),
-            patch('paper_author_searcher.http.time.sleep'),
+            patch('paper_author_searcher.transport.http.secure_download_opener', return_value=opener),
+            patch('paper_author_searcher.transport.http.time.sleep'),
         ):
             with self.assertRaises(SourceError):
                 HttpClient(retries=1).probe(URL)
@@ -191,7 +191,7 @@ class ProbeTests(unittest.TestCase):
     def test_403_not_retried(self):
         opener = Mock()
         opener.open.side_effect = HTTPError(URL, 403, 'forbidden', {}, None)
-        with patch('paper_author_searcher.http.secure_download_opener', return_value=opener):
+        with patch('paper_author_searcher.transport.http.secure_download_opener', return_value=opener):
             with self.assertRaises(SourceError) as raised:
                 HttpClient().probe(URL)
         self.assertEqual(raised.exception.status_code, 403)
@@ -205,7 +205,7 @@ class ProbeTests(unittest.TestCase):
         response.read.side_effect = IncompleteRead(b'%PDF-', 10)
         opener = Mock()
         opener.open.return_value = response
-        with patch('paper_author_searcher.http.secure_download_opener', return_value=opener):
+        with patch('paper_author_searcher.transport.http.secure_download_opener', return_value=opener):
             with self.assertRaises(SourceError):
                 HttpClient(retries=0).probe(URL)
 

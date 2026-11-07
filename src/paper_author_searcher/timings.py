@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
-from .http_decorators import HttpClientDecorator
+from .transport.http_decorators import HttpClientDecorator
 
 Clock = Callable[[], float]
 SECONDS_PRECISION = 3

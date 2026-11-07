@@ -3,7 +3,7 @@
 Evaluation 读取已有 JSON 和独立人工标注，不调用 API，不重跑 Resolver、去重或归属规则，也不修改匹配阈值。它检验保存结果中的决策，而不是把 `verified` 当作人工真值。
 
 ```bash
-PYTHONPATH=src python3 -m paper_author_searcher.evaluation_cli \
+PYTHONPATH=src python3 -m paper_author_searcher.cli.evaluate \
   --result papers.reviewed.json \
   --ground-truth ground_truth.json \
   --output evaluation.json

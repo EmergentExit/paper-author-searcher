@@ -4,8 +4,8 @@ import dataclasses
 import unittest
 
 from paper_author_searcher.config import DEFAULT_MATCHING
-from paper_author_searcher.identity_ranking import IdentityRanking
 from paper_author_searcher.models import AnchorEvidence, ProfessorProfile
+from paper_author_searcher.resolution.identity_ranking import IdentityRanking
 from paper_author_searcher.status import AnchorKind
 
 

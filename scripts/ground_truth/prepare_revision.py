@@ -6,7 +6,7 @@ from pathlib import Path
 
 from scripts.ground_truth.build_candidates import build_candidates, export_candidates, read_json, write_json
 
-from paper_author_searcher.evaluation_matching import stable_identifiers
+from paper_author_searcher.quality.evaluation_matching import stable_identifiers
 
 
 def prepare_revision(base, sources):

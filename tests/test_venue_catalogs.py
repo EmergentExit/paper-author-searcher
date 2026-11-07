@@ -10,15 +10,9 @@ from contextlib import redirect_stdout
 from dataclasses import replace
 from pathlib import Path
 
-from paper_author_searcher.catalog_cli import main as catalog_main
-from paper_author_searcher.composition import RunOptions, ServiceContainer
-from paper_author_searcher.config import DEFAULT_CATALOGS
-from paper_author_searcher.http import URLProbe
-from paper_author_searcher.listed_works import AuthorMatcher
-from paper_author_searcher.matching import work_keys
-from paper_author_searcher.models import ProfessorProfile
-from paper_author_searcher.settings import Settings
-from paper_author_searcher.venue_catalogs import (
+from paper_author_searcher.cli.catalog_index import main as catalog_main
+from paper_author_searcher.collection.listed_works import AuthorMatcher
+from paper_author_searcher.collection.venue_catalogs import (
     AclAnthologyCatalog,
     CatalogEntry,
     CatalogIndexer,
@@ -37,6 +31,12 @@ from paper_author_searcher.venue_catalogs import (
     probe_fetch,
     text_lines,
 )
+from paper_author_searcher.composition import RunOptions, ServiceContainer
+from paper_author_searcher.config import DEFAULT_CATALOGS
+from paper_author_searcher.matching import work_keys
+from paper_author_searcher.models import ProfessorProfile
+from paper_author_searcher.settings import Settings
+from paper_author_searcher.transport.http import URLProbe
 
 BIB = r"""
 @proceedings{2024.acl-long, title = "Proceedings of ACL", editor = "Someone, A."}
