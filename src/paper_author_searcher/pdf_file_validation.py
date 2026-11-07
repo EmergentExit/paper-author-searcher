@@ -11,7 +11,7 @@ import tempfile
 import unicodedata
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from .config import DEFAULT_DOWNLOAD, DownloadConfig
 from .http import has_pdf_signature
@@ -23,6 +23,12 @@ from .pdf_identity import arxiv_id, edition_arxiv_ids, metadata_identity
 from .status import FormatStatus, IdentityStatus, PDFValidationStatus
 
 logger = logging.getLogger(__name__)
+
+
+class FileValidator(Protocol):
+    """Checks a downloaded file against the paper it should be."""
+
+    def validate(self, path: Any, paper: dict[str, Any]) -> PDFFileValidation: ...
 
 
 def validation_target(paper, candidate=None):

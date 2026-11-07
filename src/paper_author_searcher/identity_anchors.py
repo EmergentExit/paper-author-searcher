@@ -30,7 +30,7 @@ from .homepage_citations import (
     pdf_text,
 )
 from .html_support import LinkExtractor, decode_response
-from .http import HttpClient, SourceError
+from .http import HttpTransport, SourceError
 from .identity_discovery import Discovery, NoDiscovery
 from .matching import (
     ARXIV_DOI_PREFIX,
@@ -210,7 +210,7 @@ class ScholarlyAnchorFinder:
 
     def __init__(
         self,
-        client: HttpClient,
+        client: HttpTransport,
         source_config=DEFAULT_SOURCES,
         matching_config=DEFAULT_MATCHING,
         anchor_config=DEFAULT_ANCHORS,

@@ -9,11 +9,13 @@ import re
 import threading
 import time
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from http import HTTPStatus
 from http.client import HTTPException
+from typing import Any, Protocol
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request
@@ -25,6 +27,38 @@ from .network_safety import secure_download_opener
 from .redaction import redact
 
 logger = logging.getLogger(__name__)
+
+
+class HttpTransport(Protocol):
+    """What services ask of an HTTP client: ``HttpClient`` and every layer the composition root wraps around it."""
+
+    def get(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        xml: bool = False,
+    ) -> Any: ...
+
+    def post_json(
+        self,
+        url: str,
+        payload: Any,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        expected_type: type = dict,
+    ) -> Any: ...
+
+    def probe(
+        self,
+        url: str,
+        maximum_bytes: int = 1024,
+        html_bytes: int = 0,
+        maximum_redirects: int = 5,
+        redirect_guard: Callable[[str], None] | None = None,
+    ) -> Any: ...
+
+    def stream_pdf(self, url: str, destination: Any, config: Any) -> Any: ...
 
 
 # Characters up to this one (space) never appear in a URL we should fetch.
