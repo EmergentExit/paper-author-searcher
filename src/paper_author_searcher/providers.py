@@ -2,7 +2,7 @@
 
 import xml.etree.ElementTree as ET
 from collections.abc import Collection, Iterable
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from .config import DEFAULT_MATCHING, DEFAULT_SOURCES, MatchingConfig, SourceConfig
 from .http import HttpTransport, MetadataReader, SourceError
@@ -16,6 +16,15 @@ class AuthorProvider(Protocol):
     name: str
 
     def search(self, query: ProfessorQuery) -> list[AuthorCandidate]: ...
+
+
+@runtime_checkable
+class ProfileLookup(Protocol):
+    """A source that fetches one author profile by ID, for anchored profiles the name search did not return."""
+
+    name: str
+
+    def lookup(self, author_id: str) -> AuthorCandidate: ...
 
 
 def _display_names(items: Iterable[JSONObject] | None) -> list[str]:

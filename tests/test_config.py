@@ -71,4 +71,5 @@ class ConfigurationTests(unittest.TestCase):
         resolver = ServiceContainer(replace(Settings(), matching=config)).resolver
         self.assertIs(resolver.config, config)
         self.assertIs(resolver.providers[0].matching_config, config)
-        self.assertIs(resolver.anchor_finder.matching, config)
+        self.assertIs(resolver.anchor_finder.papers.matching, config)
+        self.assertIs(resolver.anchor_finder.pages.matching, config)
