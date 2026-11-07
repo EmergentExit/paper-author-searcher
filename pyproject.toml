@@ -91,10 +91,9 @@ ignore_missing_imports = true
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-# Being restructured (paper ownership rules, resolver/anchor split); they are annotated as they are split.
+# Being restructured (resolver/anchor split); they are annotated as they are split.
 module = [
     "paper_author_searcher.identity_anchors",
-    "paper_author_searcher.paper_ownership",
     "paper_author_searcher.resolver",
 ]
 disallow_untyped_defs = false
