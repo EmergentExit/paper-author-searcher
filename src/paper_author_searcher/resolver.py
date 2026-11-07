@@ -1,70 +1,63 @@
-"""Collect candidates, group verified identities, and rank against the query."""
+"""Resolve a query to one person: collect candidates, group them, score the groups and settle close contests.
+
+Grouping is ``identity_grouping``, scoring is ``identity_scoring``; this module runs the steps in order and owns the
+parts that talk to sources (candidate search, anchor finding, anchored profile lookups) and the contest settlers
+(byline disambiguation, LLM adjudication).
+"""
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections.abc import Iterable, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from contextvars import copy_context
-from dataclasses import dataclass
 from functools import partial
-from itertools import combinations
 from typing import Any
 
-from .concurrency import attempt, in_order
-from .config import DEFAULT_ANCHORS, DEFAULT_MATCHING
-from .identity import IdentityLink, compare_identity, names_may_match
-from .identity_adjudication import accepted
-from .identity_anchors import SUPPLIED_ORCID_REASON, IdentityAnchors
-from .identity_ranking import IdentityRanking
-from .logging_config import log_isolated_failure
-from .matching import (
-    best_similarity,
-    canonical_orcid,
-    institution_similarity,
-    name_similarity,
-    research_similarity,
+from .anchoring.model import AnchorFinder, IdentityAnchors
+from .byline_disambiguation import BylineDisambiguator
+from .concurrency import Outcome, attempt, in_order
+from .config import DEFAULT_ANCHORS, DEFAULT_MATCHING, MatchingConfig
+from .identity import compare_identity
+from .identity_adjudication import IdentityAdjudicator, accepted
+from .identity_grouping import (
+    MINIMUM_CONTEST_SIZE,
+    CandidateGroup,
+    group_candidates,
+    merge_anchored,
+    separate_orcid_conflicts,
 )
-from .models import AnchorEvidence, ProfessorProfile, ResolutionResult
-from .status import AnchorKind, ResolutionStatus, UniversityStatus
+from .identity_ranking import IdentityRanking
+from .identity_scoring import ProfileScorer, ProfileSignals
+from .logging_config import log_isolated_failure
+from .models import AuthorCandidate, ProfessorProfile, ProfessorQuery, ResolutionResult
+from .providers import AuthorProvider, ProfileLookup
+from .status import ResolutionStatus, UniversityStatus
 from .timings import phase
 
 logger = logging.getLogger(__name__)
 
+__all__ = ['MINIMUM_CONTEST_SIZE', 'ProfessorResolver', 'ProfileSignals']
 
-# A contest needs two people.
-MINIMUM_CONTEST_SIZE = 2
-
-
-@dataclass
-class ProfileSignals:
-    name: float
-    school: float
-    current_school: float
-    department: float
-    research: float
-    university_status: str
-    affiliations: list[str]
-    topics: list[str]
-    links: list[IdentityLink]
-    anchors: list[AnchorEvidence]
-    orcid_conflict: bool
+Scored = list[tuple[ProfessorProfile, CandidateGroup]]
 
 
 class ProfessorResolver:
     def __init__(
         self,
-        providers,
-        config=DEFAULT_MATCHING,
-        anchor_finder=None,
-        adjudicator=None,
-        ranking=None,
-        disambiguator=None,
-        lookup_workers=DEFAULT_ANCHORS.lookup_workers,
-    ):
+        providers: Iterable[AuthorProvider],
+        config: MatchingConfig = DEFAULT_MATCHING,
+        anchor_finder: AnchorFinder | None = None,
+        adjudicator: IdentityAdjudicator | None = None,
+        ranking: IdentityRanking | None = None,
+        disambiguator: BylineDisambiguator | None = None,
+        lookup_workers: int = DEFAULT_ANCHORS.lookup_workers,
+    ) -> None:
         self.config = config
         # Sources whose anchored profiles (the name search missed them) are looked up at once.
         self.lookup_workers = lookup_workers
         self.providers = list(providers)
         # Orders candidates and decides contests; see identity_ranking.IdentityRanking.
         self.ranking = ranking or IdentityRanking(config)
+        self.scorer = ProfileScorer(config, self.ranking)
         # Turns query hints (ORCID, homepage, known papers) into author-ID anchors; without one, hints are unused.
         self.anchor_finder = anchor_finder
         # Off unless injected; see identity_adjudication.ClaudeIdentityAdjudicator.
@@ -72,181 +65,7 @@ class ProfessorResolver:
         # Off unless injected; see byline_disambiguation.BylineDisambiguator.
         self.disambiguator = disambiguator
 
-    def rank(self, query):
-        """Scored identity profiles, the candidate groups behind them, and per-source errors."""
-        records, errors, anchors = self._search_and_find_anchors(query)
-        if anchors.errors:
-            errors['anchors'] = '; '.join(anchors.errors)
-        with phase('identity: anchored profile lookups'):
-            records.extend(self._anchored_records(anchors, records, errors))
-        with phase('identity: grouping and scoring'):
-            groups = self._separate_orcid_conflicts(
-                self._merge_anchored(self._group_candidates(records), anchors), anchors
-            )
-            scored = sorted(
-                ((self._score(query, group, anchors), group) for group in groups),
-                key=lambda item: self.ranking.key(item[0]),
-            )
-        with phase('identity: disambiguation'):
-            scored = self._disambiguate(query, scored)
-        with phase('identity: adjudication'):
-            scored = self._adjudicate(query, scored, anchors)
-        return [profile for profile, _ in scored], [group for _, group in scored], errors
-
-    def _search_and_find_anchors(self, query):
-        """Candidate search and anchor finding, side by side: neither reads the other's results, so running them
-        together changes nothing but the wait."""
-        # The finder also discovers hints the caller did not give (identity_discovery), so it runs for every query.
-        if self.anchor_finder is None:
-            with phase('identity: candidate search'):
-                records, errors = self._collect_candidates(query)
-            return records, errors, IdentityAnchors()
-        with ThreadPoolExecutor(max_workers=1, thread_name_prefix='identity-anchors') as pool:
-            # The worker runs in a copy of this context, so its phases are timed in this run.
-            anchoring = pool.submit(copy_context().run, self._find_anchors, query)
-            with phase('identity: candidate search'):
-                records, errors = self._collect_candidates(query)
-            anchors = anchoring.result()
-        return records, errors, anchors
-
-    def _find_anchors(self, query):
-        with phase('identity: anchors'):
-            return self.anchor_finder.find(query)
-
-    def _disambiguate(self, query, scored):
-        """Let the contenders' own bylines settle a close contest the scores leave open."""
-        if (
-            self.disambiguator is None
-            or len(scored) < MINIMUM_CONTEST_SIZE
-            or self.ranking.uncontested(scored[0][0], scored[1][0])
-        ):
-            return scored
-        verdict = self.disambiguator.choose(query, scored)
-        if verdict is None:
-            return scored
-        profile, group = scored[verdict.index]
-        profile.disambiguation = verdict.note
-        profile.curated_author_ids = verdict.curated_author_ids
-        profile.evidence.append(verdict.note)
-        return [(profile, group), *(item for index, item in enumerate(scored) if index != verdict.index)]
-
-    def _adjudicate(self, query, scored, anchors):
-        """Ask the adjudicator about a close, unanchored contest between the top two profiles."""
-        if self.adjudicator is None or len(scored) < MINIMUM_CONTEST_SIZE:
-            return scored
-        (first, first_group), (second, second_group) = scored[0], scored[1]
-        if first.disambiguation:
-            return scored
-        if first.match_score - second.match_score >= self.config.ambiguity_margin:
-            return scored
-        if first.identity_anchors or second.identity_anchors:
-            return scored
-        verdict = self.adjudicator.judge(query, first_group, second_group)
-        if not accepted(verdict, self.config.adjudication_minimum_confidence):
-            return scored
-        note = f'LLM adjudication ({verdict.model}, confidence {verdict.confidence:.2f}): {verdict.rationale}'
-        if verdict.same_person == 'yes' and verdict.target in ('first', 'second', 'both'):
-            merged = first_group + second_group
-            profile = self._score(query, merged, anchors)
-            profile.adjudication = note
-            profile.evidence.append(note)
-            rest = sorted(scored[2:], key=lambda item: self.ranking.key(item[0]))
-            return [(profile, merged), *rest]
-        if verdict.same_person == 'no' and verdict.target in ('first', 'second'):
-            chosen = 0 if verdict.target == 'first' else 1
-            profile, group = scored[chosen]
-            profile.adjudication = note
-            profile.evidence.append(note)
-            return [scored[chosen], scored[1 - chosen]] + scored[2:]
-        return scored
-
-    def _anchored_records(self, anchors, records, errors):
-        """Fetch anchored profiles that the name search did not return."""
-        present = {(record.source, record.author_id) for record in records}
-        batches = []
-        for provider in self.providers:
-            lookup = getattr(provider, 'lookup', None)
-            wanted = [
-                author_id
-                for author_id in sorted(anchors.author_ids.get(provider.name, ()))
-                if lookup is not None and (provider.name, author_id) not in present
-            ]
-            if wanted:
-                batches.append((provider, wanted, lookup))
-        # Sources are asked side by side, but each source's profiles one after another, as before: a rate-limited
-        # source (Semantic Scholar) answers parallel profile requests with 429s, and a lost profile loses its ID.
-        outcomes = in_order(
-            [partial(self._look_up_each, lookup, wanted) for _, wanted, lookup in batches],
-            self.lookup_workers,
-            'anchored-profiles',
-        )
-        added = []
-        for (provider, wanted, _), results in zip(batches, outcomes, strict=True):
-            for author_id, outcome in zip(wanted, results, strict=True):
-                if outcome.error is None:
-                    added.append(outcome.unwrap())
-                else:
-                    log_isolated_failure(
-                        logger, 'Anchor lookup %s:%s failed: %s', provider.name, author_id, outcome.error
-                    )
-                    errors.setdefault(provider.name, str(outcome.error))
-        return added
-
-    @staticmethod
-    def _look_up_each(lookup, author_ids):
-        return [attempt(partial(lookup, author_id), (Exception,)) for author_id in author_ids]
-
-    @staticmethod
-    def _is_anchored(record, anchors):
-        if anchors.orcid and record.orcid and not anchors.orcid_outweighed(record.source, str(record.author_id)):
-            # The record's own ORCID decides: an anchor that a different ORCID contradicts (a source returning a
-            # namesake for an ORCID lookup) must not pull that profile into the person's identity, unless enough of
-            # the person's own works outweigh that ORCID (AnchorKind.CONTESTED).
-            return canonical_orcid(record.orcid) == anchors.orcid
-        return anchors.contains(record.source, record.author_id)
-
-    def _merge_anchored(self, groups, anchors):
-        """Every group holding an anchored profile belongs to the requested person."""
-        if not anchors:
-            return groups
-        anchored = [group for group in groups if any(self._is_anchored(record, anchors) for record in group)]
-        if len(anchored) < MINIMUM_CONTEST_SIZE:
-            return groups
-        merged = [record for group in anchored for record in group]
-        return [merged] + [group for group in groups if group not in anchored]
-
-    @staticmethod
-    def _separate_orcid_conflicts(groups, anchors):
-        """A group holding a record confirmed by the person's ORCID (carrying it, or outweighing another) is theirs;
-        members carrying another ORCID are namesakes that shared DOIs or coauthors pulled in, and leave it, one group
-        per ORCID. A group without a confirmed record keeps its members, and its conflict counts as before."""
-        if not anchors.orcid:
-            return groups
-
-        def foreign(record):
-            orcid = canonical_orcid(record.orcid) if record.orcid else None
-            return bool(orcid and orcid != anchors.orcid) and not anchors.orcid_outweighed(
-                record.source, str(record.author_id)
-            )
-
-        def confirmed(record):
-            orcid = canonical_orcid(record.orcid) if record.orcid else None
-            return orcid == anchors.orcid or anchors.orcid_outweighed(record.source, str(record.author_id))
-
-        separated = []
-        for group in groups:
-            outsiders = [record for record in group if foreign(record)]
-            if not outsiders or not any(confirmed(record) for record in group):
-                separated.append(group)
-                continue
-            separated.append([record for record in group if not foreign(record)])
-            by_orcid: dict[str, list] = {}
-            for record in outsiders:
-                by_orcid.setdefault(str(canonical_orcid(record.orcid)), []).append(record)
-            separated.extend(by_orcid.values())
-        return separated
-
-    def resolve(self, query):
+    def resolve(self, query: ProfessorQuery) -> ResolutionResult:
         profiles, groups, errors = self.rank(query)
         if not profiles:
             return ResolutionResult(profile=None, candidates=[], source_errors=errors)
@@ -258,11 +77,55 @@ class ProfessorResolver:
             ambiguity=ambiguity,
         )
 
-    def _collect_candidates(self, query):
+    def rank(self, query: ProfessorQuery) -> tuple[list[ProfessorProfile], list[CandidateGroup], dict[str, str]]:
+        """Scored identity profiles, the candidate groups behind them, and per-source errors."""
+        records, errors, anchors = self._search_and_find_anchors(query)
+        if anchors.errors:
+            errors['anchors'] = '; '.join(anchors.errors)
+        with phase('identity: anchored profile lookups'):
+            records.extend(self._anchored_records(anchors, records, errors))
+        with phase('identity: grouping and scoring'):
+            groups = separate_orcid_conflicts(merge_anchored(group_candidates(records, self.config), anchors), anchors)
+            scored = sorted(
+                ((self.scorer.score(query, group, anchors), group) for group in groups),
+                key=lambda item: self.ranking.key(item[0]),
+            )
+        with phase('identity: disambiguation'):
+            scored = self._disambiguate(query, scored)
+        with phase('identity: adjudication'):
+            scored = self._adjudicate(query, scored, anchors)
+        return [profile for profile, _ in scored], [group for _, group in scored], errors
+
+    # Sources -----------------------------------------------------------------------------------------------------
+
+    def _search_and_find_anchors(
+        self, query: ProfessorQuery
+    ) -> tuple[list[AuthorCandidate], dict[str, str], IdentityAnchors]:
+        """Candidate search and anchor finding, side by side: neither reads the other's results, so running them
+        together changes nothing but the wait."""
+        # The finder also discovers hints the caller did not give (identity_discovery), so it runs for every query.
+        if self.anchor_finder is None:
+            with phase('identity: candidate search'):
+                records, errors = self._collect_candidates(query)
+            return records, errors, IdentityAnchors()
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix='identity-anchors') as pool:
+            # The worker runs in a copy of this context, so its phases are timed in this run.
+            anchoring = pool.submit(copy_context().run, self._find_anchors, self.anchor_finder, query)
+            with phase('identity: candidate search'):
+                records, errors = self._collect_candidates(query)
+            anchors = anchoring.result()
+        return records, errors, anchors
+
+    @staticmethod
+    def _find_anchors(finder: AnchorFinder, query: ProfessorQuery) -> IdentityAnchors:
+        with phase('identity: anchors'):
+            return finder.find(query)
+
+    def _collect_candidates(self, query: ProfessorQuery) -> tuple[list[AuthorCandidate], dict[str, str]]:
         records = []
         errors = {}
         with ThreadPoolExecutor(max_workers=max(1, len(self.providers))) as pool:
-            futures = {}
+            futures: dict[Future[list[AuthorCandidate]], str] = {}
             for provider in self.providers:
                 future = pool.submit(provider.search, query)
                 futures[future] = provider.name
@@ -283,32 +146,97 @@ class ProfessorResolver:
         records.sort(key=lambda candidate: (candidate.source, candidate.author_id))
         return records, errors
 
-    def _group_candidates(self, records):
-        groups: list[Any] = []
-        for candidate in records:
-            matching_group = None
-            for group in groups:
-                if self._can_join(candidate, group):
-                    matching_group = group
-                    break
-            if matching_group is None:
-                groups.append([candidate])
-            else:
-                matching_group.append(candidate)
-        return groups
+    def _anchored_records(
+        self, anchors: IdentityAnchors, records: Iterable[AuthorCandidate], errors: dict[str, str]
+    ) -> list[AuthorCandidate]:
+        """Fetch anchored profiles that the name search did not return."""
+        present = {(record.source, record.author_id) for record in records}
+        batches: list[tuple[ProfileLookup, list[str]]] = []
+        for provider in self.providers:
+            if not isinstance(provider, ProfileLookup):
+                continue
+            wanted = [
+                author_id
+                for author_id in sorted(anchors.author_ids.get(provider.name, ()))
+                if (provider.name, author_id) not in present
+            ]
+            if wanted:
+                batches.append((provider, wanted))
+        # Sources are asked side by side, but each source's profiles one after another, as before: a rate-limited
+        # source (Semantic Scholar) answers parallel profile requests with 429s, and a lost profile loses its ID.
+        outcomes = in_order(
+            [partial(self._look_up_each, source, wanted) for source, wanted in batches],
+            self.lookup_workers,
+            'anchored-profiles',
+        )
+        added = []
+        for (source, wanted), results in zip(batches, outcomes, strict=True):
+            for author_id, outcome in zip(wanted, results, strict=True):
+                if outcome.error is None:
+                    added.append(outcome.unwrap())
+                else:
+                    log_isolated_failure(
+                        logger, 'Anchor lookup %s:%s failed: %s', source.name, author_id, outcome.error
+                    )
+                    errors.setdefault(source.name, str(outcome.error))
+        return added
 
-    def _can_join(self, candidate, group):
-        # Complete-link prevents incompatible records merging through a bridge. Split-profile fragments of one
-        # person are often only chained (A~B, A~C), so one split link suffices when no member conflicts.
-        # A member with incompatible names always blocks the join, so a cheap exact bound rules it out first.
-        if not all(names_may_match(candidate, member, self.config) for member in group):
-            return False
-        links = [compare_identity(candidate, member, self.config) for member in group]
-        if all(link.matched for link in links):
-            return True
-        return any(link.split_profile for link in links) and not any(link.conflict for link in links)
+    @staticmethod
+    def _look_up_each(source: ProfileLookup, author_ids: Sequence[str]) -> list[Outcome[AuthorCandidate]]:
+        return [attempt(partial(source.lookup, author_id), (Exception,)) for author_id in author_ids]
 
-    def _mark_ambiguity(self, profiles, groups):
+    # Contests ----------------------------------------------------------------------------------------------------
+
+    def _disambiguate(self, query: ProfessorQuery, scored: Scored) -> Scored:
+        """Let the contenders' own bylines settle a close contest the scores leave open."""
+        if (
+            self.disambiguator is None
+            or len(scored) < MINIMUM_CONTEST_SIZE
+            or self.ranking.uncontested(scored[0][0], scored[1][0])
+        ):
+            return scored
+        verdict = self.disambiguator.choose(query, scored)
+        if verdict is None:
+            return scored
+        profile, group = scored[verdict.index]
+        profile.disambiguation = verdict.note
+        profile.curated_author_ids = verdict.curated_author_ids
+        profile.evidence.append(verdict.note)
+        return [(profile, group), *(item for index, item in enumerate(scored) if index != verdict.index)]
+
+    def _adjudicate(self, query: ProfessorQuery, scored: Scored, anchors: IdentityAnchors) -> Scored:
+        """Ask the adjudicator about a close, unanchored contest between the top two profiles."""
+        if self.adjudicator is None or len(scored) < MINIMUM_CONTEST_SIZE:
+            return scored
+        (first, first_group), (second, second_group) = scored[0], scored[1]
+        if first.disambiguation:
+            return scored
+        if first.match_score - second.match_score >= self.config.ambiguity_margin:
+            return scored
+        if first.identity_anchors or second.identity_anchors:
+            return scored
+        verdict = self.adjudicator.judge(query, first_group, second_group)
+        if not accepted(verdict, self.config.adjudication_minimum_confidence):
+            return scored
+        note = f'LLM adjudication ({verdict.model}, confidence {verdict.confidence:.2f}): {verdict.rationale}'
+        if verdict.same_person == 'yes' and verdict.target in ('first', 'second', 'both'):
+            merged = first_group + second_group
+            profile = self.scorer.score(query, merged, anchors)
+            profile.adjudication = note
+            profile.evidence.append(note)
+            rest = sorted(scored[2:], key=lambda item: self.ranking.key(item[0]))
+            return [(profile, merged), *rest]
+        if verdict.same_person == 'no' and verdict.target in ('first', 'second'):
+            chosen = 0 if verdict.target == 'first' else 1
+            profile, group = scored[chosen]
+            profile.adjudication = note
+            profile.evidence.append(note)
+            return [scored[chosen], scored[1 - chosen]] + scored[2:]
+        return scored
+
+    def _mark_ambiguity(
+        self, profiles: Sequence[ProfessorProfile], groups: Sequence[CandidateGroup]
+    ) -> dict[str, Any] | None:
         if len(profiles) < MINIMUM_CONTEST_SIZE:
             return None
         best = profiles[0]
@@ -350,7 +278,7 @@ class ProfessorResolver:
         }
 
     @staticmethod
-    def _profile_records(profile, groups):
+    def _profile_records(profile: ProfessorProfile, groups: Iterable[CandidateGroup]) -> list[AuthorCandidate]:
         records = []
         for group in groups:
             for record in group:
@@ -358,203 +286,3 @@ class ProfessorResolver:
                 if record.author_id in ids:
                     records.append(record)
         return records
-
-    def _extract_signals(self, query, group, anchors=None):
-        names = []
-        affiliations = set()
-        current_affiliations = set()
-        topics = set()
-        departments = []
-        for candidate in group:
-            names.extend([candidate.name, *candidate.aliases])
-            affiliations.update(candidate.affiliations)
-            affiliations.update(candidate.current_affiliations)
-            current_affiliations.update(candidate.current_affiliations)
-            topics.update(candidate.topics)
-            departments.extend(candidate.departments)
-        departments.extend(sorted(affiliations))
-        universities = [query.university, *query.university_aliases]
-
-        def school_compare(a, b):
-            return institution_similarity(a, b, self.config)
-
-        school = best_similarity(universities, sorted(affiliations), school_compare)
-        department = 0.0
-        if query.department:
-            department = best_similarity([query.department], departments, school_compare)
-        links = []
-        for left, right in combinations(group, 2):
-            if left.source != right.source:
-                links.append(compare_identity(left, right, self.config))
-        anchors = anchors or IdentityAnchors()
-        anchor_evidence = []
-        for record in group:
-            if self._is_anchored(record, anchors):
-                anchor_evidence.extend(anchors.evidence_for(record.source, record.author_id))
-                if anchors.orcid and record.orcid and canonical_orcid(record.orcid) == anchors.orcid:
-                    anchor_evidence.append(
-                        AnchorEvidence(record.source, str(record.author_id), SUPPLIED_ORCID_REASON, AnchorKind.ORCID)
-                    )
-        orcid_conflict = bool(
-            anchors.orcid
-            and any(
-                record.orcid
-                and canonical_orcid(record.orcid) != anchors.orcid
-                and not anchors.orcid_outweighed(record.source, str(record.author_id))
-                for record in group
-            )
-        )
-        return ProfileSignals(
-            name=best_similarity(
-                [query.name],
-                names,
-                lambda a, b: name_similarity(a, b, self.config),
-            ),
-            school=school,
-            current_school=best_similarity(
-                universities,
-                sorted(current_affiliations),
-                school_compare,
-            ),
-            department=department,
-            research=best_similarity(query.research_interests, sorted(topics), research_similarity),
-            university_status=self._university_status(affiliations, school),
-            affiliations=sorted(affiliations),
-            topics=sorted(topics),
-            links=links,
-            anchors=sorted(set(anchor_evidence)),
-            orcid_conflict=orcid_conflict,
-        )
-
-    def _university_status(self, affiliations, similarity):
-        if not affiliations:
-            return 'unknown'
-        if similarity >= self.config.matched_school:
-            return 'matched'
-        return 'mismatch'
-
-    def _link_bonus(self, links):
-        verified_links = []
-        for link in links:
-            if link.matched:
-                verified_links.append(link)
-        if not verified_links:
-            return 0.0
-        if any(link.shared_orcid for link in verified_links):
-            return self.config.orcid_bonus
-        shared_dois = max(link.shared_dois for link in verified_links)
-        if shared_dois >= self.config.minimum_shared_dois:
-            coverage = min(shared_dois / self.config.doi_coverage_target, 1.0)
-            return self.config.doi_base_bonus + self.config.doi_coverage_bonus * coverage
-        if shared_dois == 0:
-            return self.config.contextual_link_bonus
-        # One paper supports grouping but cannot elevate a fragment's rank.
-        return 0.0
-
-    def _match_score(self, signals):
-        config = self.config
-        score = config.name_weight * signals.name
-        if signals.university_status == UniversityStatus.MATCHED:
-            score += config.school_weight * signals.school
-            score += config.current_school_weight * signals.current_school
-        elif signals.university_status == UniversityStatus.MISMATCH:
-            score -= config.school_mismatch_penalty
-        # Missing school information is neutral, not a mismatch.
-        score += self._link_bonus(signals.links)
-        if signals.anchors:
-            score += config.anchor_bonus
-        if signals.orcid_conflict:
-            score -= config.orcid_conflict_penalty
-        score += config.department_weight * signals.department
-        score += config.research_weight * signals.research
-        return round(max(0, min(score, config.confidence_cap)), config.confidence_precision)
-
-    def _evidence(self, query, group, signals):
-        evidence = [f'Name similarity: {signals.name:.3f}']
-        if signals.university_status == UniversityStatus.UNKNOWN:
-            evidence.append('University information missing (neutral); identity unverified')
-        elif signals.university_status == UniversityStatus.MISMATCH:
-            evidence.append('Observed universities do not match requested university')
-        else:
-            evidence.append(f'University matched: {signals.school:.3f}')
-            if signals.current_school < self.config.matched_school:
-                evidence.append('Affiliation is historical or its recency is unknown')
-        link_messages = set()
-        for link in signals.links:
-            link_messages.update(link.evidence)
-        evidence.extend(sorted(link_messages))
-        evidence.extend(f'Identity anchor: {anchor}' for anchor in signals.anchors)
-        if signals.orcid_conflict:
-            evidence.append('ORCID conflicts with the supplied ORCID')
-        if query.department:
-            evidence.append(f'Department similarity: {signals.department:.3f}')
-        if query.research_interests:
-            evidence.append(f'Research similarity: {signals.research:.3f}')
-        sources = sorted({candidate.source for candidate in group})
-        evidence.append('Sources: ' + ', '.join(sources))
-        return evidence
-
-    def _score(self, query, group, anchors=None):
-        signals = self._extract_signals(query, group, anchors)
-        match_score = self._match_score(signals)
-        confidence = match_score
-        anchored = bool(signals.anchors) and not signals.orcid_conflict
-        # A caller-supplied anchor also covers people whose indexed affiliation is stale or missing.
-        school_ok = signals.university_status == UniversityStatus.MATCHED or anchored
-        if signals.name < self.config.compatible_name or not school_ok:
-            confidence = min(confidence, self.config.review_cap)
-        status = ResolutionStatus.NEEDS_REVIEW
-        university = None
-        if signals.university_status == UniversityStatus.MATCHED:
-            university = query.university
-        if school_ok and confidence >= self.config.resolved_confidence:
-            status = ResolutionStatus.RESOLVED
-        author_ids: dict[str, Any] = {}
-        author_id_aliases: dict[str, Any] = {}
-        matched_affiliations = []
-        universities = [query.university, *query.university_aliases]
-        for affiliation in signals.affiliations:
-            similarity = best_similarity(
-                universities,
-                [affiliation],
-                lambda a, b: institution_similarity(a, b, self.config),
-            )
-            if similarity >= self.config.matched_school:
-                matched_affiliations.append(affiliation)
-        if matched_affiliations:
-            university = matched_affiliations[0]
-        orcid = None
-        for candidate in group:
-            author_ids.setdefault(candidate.source, candidate.author_id)
-            author_id_aliases.setdefault(candidate.source, []).append(candidate.author_id)
-            if orcid is None and candidate.orcid:
-                orcid = canonical_orcid(candidate.orcid)
-        profile = ProfessorProfile(
-            name=group[0].name,
-            affiliations=signals.affiliations,
-            author_ids=author_ids,
-            identity_confidence=confidence,
-            status=status,
-            evidence=self._evidence(query, group, signals),
-            orcid=orcid,
-            research_interests=signals.topics,
-            university=university,
-            university_status=signals.university_status,
-            match_score=match_score,
-            requested_university=query.university,
-            matched_affiliations=matched_affiliations,
-            author_id_aliases=author_id_aliases,
-            name_aliases=sorted({candidate.name for candidate in group}),
-            requested_name=query.name,
-            identity_anchors=signals.anchors,
-            orcid_conflict=signals.orcid_conflict,
-            requested_department=query.department,
-            previous_universities=list(query.previous_universities),
-            listed_works=list(anchors.listed_works) if anchors is not None else [],
-            discovered=dict(anchors.discovered) if anchors is not None else {},
-            listed_pdfs=list(anchors.listed_pdfs) if anchors is not None else [],
-        )
-        if profile.status != ResolutionStatus.RESOLVED and self.ranking.resolves(profile, signals.name):
-            profile.status = ResolutionStatus.RESOLVED
-            profile.evidence.append('Resolved by a precedence identity anchor (the supplied ORCID)')
-        return profile

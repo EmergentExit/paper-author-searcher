@@ -11,6 +11,7 @@ from paper_author_searcher import AuthorCandidate as C
 from paper_author_searcher import identity, paper_deduplication
 from paper_author_searcher.benchmark.runner import window_archive
 from paper_author_searcher.benchmark.scoring import scope_to_window
+from paper_author_searcher.identity_grouping import group_candidates
 from paper_author_searcher.models import PaperRecord
 from paper_author_searcher.paper_deduplication import deduplicate_papers
 from paper_author_searcher.resolver import ProfessorResolver
@@ -36,9 +37,12 @@ class GroupingCostTests(unittest.TestCase):
             for index in range(5)
         ]
         resolver = ProfessorResolver([Provider(candidates)])
-        with patch('paper_author_searcher.resolver.compare_identity', wraps=identity.compare_identity) as compare:
-            groups = resolver._group_candidates(sorted(candidates, key=lambda c: (c.source, c.author_id)))
+        with patch(
+            'paper_author_searcher.identity_grouping.compare_identity', wraps=identity.compare_identity
+        ) as compare:
+            groups = group_candidates(sorted(candidates, key=lambda c: (c.source, c.author_id)), resolver.config)
         # Only same-name profiles are compared in full: at most C(5, 2) per surname, never across surnames.
+        self.assertGreater(compare.call_count, 0)  # the patch reaches the grouping code
         self.assertLessEqual(compare.call_count, len(SURNAMES) * 10)
         self.assertEqual(len(groups), len(candidates))
 
