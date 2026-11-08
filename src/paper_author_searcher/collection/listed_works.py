@@ -6,19 +6,21 @@ each listed work missing from the collection is looked up once through a chain o
 at the first that has it, and enters the collection under the work's name-compatible author with evidence saying
 why. Ownership decides afterwards (``OwnershipConfig.verify_listed_works``).
 
-Works are independent, so several are looked up at once (``ListedWorksConfig.lookup_workers``): each work still asks
-its sources in order and stops at the first that has it, so the requests and answers are those of looking them up one
-by one, and the results are kept in the works' order. Per-host pacing in the HTTP layer still applies.
+The sources are asked in order, each for every work still missing, so each work still ends at the first source that
+has it and its answer and errors are those of looking it up alone. A source that answers many works per request
+(``BatchWorkLookup``, arXiv) gets them all at once; any other is asked work by work, several at a time
+(``ListedWorksConfig.lookup_workers``). Results are kept in the works' order. Per-host rules in the HTTP layer apply.
 """
 
 import logging
 import xml.etree.ElementTree as ET
 from collections.abc import Callable, Iterable, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from http import HTTPStatus
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 from urllib.parse import quote
 
+from paper_author_searcher.concurrency import Outcome, attempt, in_order
 from paper_author_searcher.config import DEFAULT_LISTED_WORKS, DEFAULT_MATCHING, ListedWorksConfig, MatchingConfig
 from paper_author_searcher.logging_config import log_isolated_failure
 from paper_author_searcher.matching import (
@@ -35,6 +37,7 @@ from paper_author_searcher.models import PaperRecord, PaperSourceResult, Profess
 from paper_author_searcher.quality.evaluation_matching import bibliographic_name_agrees
 from paper_author_searcher.transport.http import SourceError
 
+from .arxiv_api import ArxivApi, Entries
 from .paper_providers import OpenAlexPaperProvider, SemanticScholarPaperProvider, parse_year
 
 logger = logging.getLogger(__name__)
@@ -52,6 +55,17 @@ class WorkLookup(Protocol):
     name: str
 
     def find(self, key: str, profile: ProfessorProfile) -> PaperRecord | None: ...
+
+
+@runtime_checkable
+class BatchWorkLookup(WorkLookup, Protocol):
+    """A source that answers many work keys per request; each answer is what ``find`` would give for that key."""
+
+    def find_many(self, keys: Sequence[str], profile: ProfessorProfile) -> list[Outcome[PaperRecord | None]]: ...
+
+
+# Errors a source may raise for one work that leave the other works' lookups usable.
+LOOKUP_ERRORS = (SourceError, ValueError, TypeError)
 
 
 class AuthorMatcher:
@@ -207,29 +221,37 @@ class CrossrefWorkLookup:
 
 
 class ArxivWorkLookup:
-    """Preprints (the HTTP layer keeps the interval arXiv's terms require)."""
+    """Preprints, asked for in batches (collection.arxiv_api); the HTTP layer keeps arXiv's request rules."""
 
     name = 'arxiv'
 
-    def __init__(self, client: Any, base_url: str, config: ListedWorksConfig, authors: AuthorMatcher) -> None:
-        self.client, self.base_url, self.config, self.authors = client, base_url, config, authors
+    def __init__(self, api: ArxivApi, config: ListedWorksConfig, authors: AuthorMatcher) -> None:
+        self.api, self.config, self.authors = api, config, authors
 
     def find(self, key: str, profile: ProfessorProfile) -> PaperRecord | None:
-        kind, value = split_key(key)
-        if kind == 'doi':
-            return None
-        if kind == 'arxiv':
-            params: dict[str, Any] = {'id_list': value}
-        else:
-            params = {
-                'search_query': 'ti:"' + value.replace('"', ' ') + '"',
-                'max_results': self.config.title_search_results,
-            }
-        feed = self.client.get(self.base_url, params=params, xml=True)
-        for entry in feed.findall(ATOM + 'entry'):
-            title = ' '.join((entry.findtext(ATOM + 'title') or '').split())
-            if kind == 'title' and not same_title(title, value):
+        return self.find_many([key], profile)[0].unwrap()
+
+    def find_many(self, keys: Sequence[str], profile: ProfessorProfile) -> list[Outcome[PaperRecord | None]]:
+        kinds = [split_key(key) for key in keys]
+        ids = [value for kind, value in kinds if kind == 'arxiv']
+        titles = [value for kind, value in kinds if kind not in ('arxiv', 'doi')]
+        by_id = self.api.by_ids(ids) if ids else {}
+        by_title = self.api.by_titles(titles, self.config.title_search_results, same_title) if titles else {}
+        found: list[Outcome[PaperRecord | None]] = []
+        for kind, value in kinds:
+            if kind == 'doi':
+                found.append(Outcome(value=None))
                 continue
+            entries = (by_id if kind == 'arxiv' else by_title)[value]
+            if entries.error is not None:
+                found.append(Outcome(error=entries.error))
+                continue
+            found.append(Outcome(value=self._record(entries.unwrap(), profile)))
+        return found
+
+    def _record(self, entries: Entries, profile: ProfessorProfile) -> PaperRecord | None:
+        """The first entry that yields a record of the person's authorship."""
+        for entry in entries:
             record = arxiv_entry_record(entry, lambda details: self.authors.single(profile, _named(details)))
             if record is not None:
                 return record
@@ -373,26 +395,39 @@ class ListedWorkRetriever:
     def _look_up_all(
         self, keys: Sequence[str], profile: ProfessorProfile
     ) -> list[tuple[PaperRecord | None, list[dict[str, str]]]]:
-        workers = min(self.config.lookup_workers, len(keys))
-        if workers <= 1:
-            return [self._first(key, profile) for key in keys]
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='listed-works') as pool:
-            return list(pool.map(lambda key: self._first(key, profile), keys))
-
-    def _first(self, key: str, profile: ProfessorProfile) -> tuple[PaperRecord | None, list[dict[str, str]]]:
-        """Chain of responsibility: the first source that has the work answers; a failing source is skipped and its
-        error returned with the answer."""
-        errors = []
+        """Chain of responsibility, one source at a time: each source is asked for every work still missing, so a
+        work ends at the first source that has it; a failing source is skipped for that work and its error kept."""
+        found: dict[str, PaperRecord] = {}
+        errors: dict[str, list[dict[str, str]]] = {key: [] for key in keys}
+        pending = list(keys)
         for lookup in self.lookups:
-            try:
-                record = lookup.find(key, profile)
-            except (SourceError, ValueError, TypeError) as exc:
-                log_isolated_failure(logger, 'Listed work %s lookup in %s failed: %s', key, lookup.name, exc)
-                errors.append({'paper_id': key, 'source': lookup.name, 'error': str(exc)})
-                continue
-            if record is not None:
-                return record, errors
-        return None, errors
+            if not pending:
+                break
+            still_missing = []
+            for key, outcome in zip(pending, self._ask(lookup, pending, profile), strict=True):
+                if outcome.error is not None:
+                    log_isolated_failure(
+                        logger, 'Listed work %s lookup in %s failed: %s', key, lookup.name, outcome.error
+                    )
+                    errors[key].append({'paper_id': key, 'source': lookup.name, 'error': str(outcome.error)})
+                    still_missing.append(key)
+                elif outcome.value is not None:
+                    found[key] = outcome.value
+                else:
+                    still_missing.append(key)
+            pending = still_missing
+        return [(found.get(key), errors[key]) for key in keys]
+
+    def _ask(
+        self, lookup: WorkLookup, keys: Sequence[str], profile: ProfessorProfile
+    ) -> list[Outcome[PaperRecord | None]]:
+        if isinstance(lookup, BatchWorkLookup):
+            batch = attempt(partial(lookup.find_many, keys, profile), LOOKUP_ERRORS)
+            if batch.error is not None:
+                return [Outcome(error=batch.error) for _ in keys]
+            return batch.unwrap()
+        calls = [partial(attempt, partial(lookup.find, key, profile), LOOKUP_ERRORS) for key in keys]
+        return in_order(calls, self.config.lookup_workers, 'listed-works')
 
 
 def _missing_is_none(fetch: Any) -> Any:

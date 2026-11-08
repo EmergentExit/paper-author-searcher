@@ -28,7 +28,6 @@ class PDFConfig:
     preview_bytes: int = 1024
     html_metadata_bytes: int = 65536
     maximum_redirects: int = 5
-    arxiv_request_interval: float = 3.0
     arxiv_title_search: bool = True
     arxiv_search_results: int = 5
     catalog_preview_bytes: int = 2 * 1024 * 1024
@@ -138,8 +137,8 @@ class PDFConfig:
     def __post_init__(self) -> None:
         if self.preview_bytes < MINIMUM_PREVIEW_BYTES or self.html_metadata_bytes < self.preview_bytes:
             raise ValueError('PDF preview must fit the signature and HTML limit must cover the preview')
-        if self.maximum_redirects < 0 or self.arxiv_request_interval < 0:
-            raise ValueError('Redirect and interval limits must be nonnegative')
+        if self.maximum_redirects < 0:
+            raise ValueError('Redirect limit must be nonnegative')
         if self.arxiv_search_results < 1 or self.catalog_preview_bytes < self.html_metadata_bytes:
             raise ValueError('Search and catalog limits must be positive and sufficient')
         if not 1 <= self.semantic_scholar_batch_size <= SEMANTIC_SCHOLAR_MAXIMUM_BATCH:

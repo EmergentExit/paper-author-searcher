@@ -40,9 +40,9 @@ class HttpConfig:
     # API terms ask for one request every 3 s over a single connection, and its answers often take longer than 3 s.
     single_connection_hosts: tuple[str, ...] = ('export.arxiv.org',)
     # Hosts whose 429s start a longer block: (host, hold in seconds after the 1st, 2nd, ... refusal in a row; the last
-    # repeats). arXiv's 429s carry no Retry-After and, once its window quota is spent, it refuses everything for ten
-    # minutes or more (measured 2026-11-05). A hold within maximum_host_hold_seconds is waited out and the request sent
-    # once more; a longer one fails requests at once (source_deferred) until it ends. A success resets the ladder.
+    # repeats). arXiv's 429s carry no Retry-After and its blocks last from about two minutes to more than ten
+    # (transport/refusals.py). A hold within maximum_host_hold_seconds is waited out and the request sent once more; a
+    # longer one fails requests at once (source_deferred) until it ends. A success resets the ladder.
     refusal_backoff: tuple[tuple[str, tuple[float, ...]], ...] = (('export.arxiv.org', (60.0, 120.0, 300.0, 900.0)),)
 
     def __post_init__(self) -> None:
@@ -69,8 +69,17 @@ class SourceConfig:
     orcid_api_url: str = 'https://pub.orcid.org/v3.0'
     crossref_url: str = 'https://api.crossref.org'
     arxiv_url: str = 'https://export.arxiv.org/api/query'
+    # arXiv lookups are batched (collection.arxiv_api): identifiers per id_list request, titles per OR'ed title
+    # query, and the results a title batch may return before it is split (a full answer may have been truncated).
+    arxiv_id_batch_size: int = 100
+    arxiv_title_batch_size: int = 20
+    arxiv_title_batch_results: int = 200
     europepmc_url: str = 'https://www.ebi.ac.uk/europepmc/webservices/rest/search'
     core_url: str = 'https://api.core.ac.uk/v3'
+
+    def __post_init__(self) -> None:
+        if min(self.arxiv_id_batch_size, self.arxiv_title_batch_size, self.arxiv_title_batch_results) < 1:
+            raise ValueError('arXiv batch sizes must be positive')
 
 
 DEFAULT_HTTP = HttpConfig()
