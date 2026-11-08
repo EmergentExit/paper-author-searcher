@@ -1,7 +1,8 @@
 """Replay-consistency gate: replay a recorded benchmark run with the current code and require identical decisions.
 
-The recorded HTTP cache (gigabytes) lives only on the machine that recorded it, so this runs locally, not in GitHub
-CI. Make the baseline once, from the code you trust (usually main):
+The recorded HTTP cache (gigabytes) lives only on the machine that recorded it, so it runs there: by hand, and on
+every pull request through the self-hosted runner job in .github/workflows/replay-gate.yml. Make the baseline once,
+from the code you trust (usually main):
 
     PAPER_SEARCH__DBLP_DUMP__INDEX_PATH=output/dblp/dblp.sqlite \
       paper-benchmark run --replay-from career-chg --input-profile minimal --run-id replay-main
@@ -20,6 +21,7 @@ is deleted afterwards unless --keep is given; its decisions are saved next to th
 """
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -51,12 +53,25 @@ def _revision() -> str:
         return 'unknown'
 
 
+def _baseline_people(baseline: str) -> list[str]:
+    """The people a saved decisions file holds (a recording may cover only part of the roster); none for a run ID."""
+    path = Path(baseline)
+    if path.suffix != '.json' or not path.is_file():
+        return []
+    return sorted(json.loads(path.read_text(encoding='utf-8')).get('people') or {})
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--replay-from', required=True, help='Recorded run whose cache and anchors are replayed')
     parser.add_argument('--baseline', required=True, help='Decisions file (or run ID) from the trusted code')
     parser.add_argument('--input-profile', default='minimal', choices=('minimal', 'with_hints'))
-    parser.add_argument('--person', action='append', default=[], help='Limit the replay to these people')
+    parser.add_argument(
+        '--person',
+        action='append',
+        default=[],
+        help="Limit the replay to these people (default: the baseline's people, when it is a decisions file)",
+    )
     parser.add_argument('--config', type=Path, default=DEFAULT_CONFIG)
     parser.add_argument(
         '--dblp-index',
@@ -65,6 +80,11 @@ def main() -> int:
         help='DBLP dump index the recorded run used (default: output/dblp/dblp.sqlite if present)',
     )
     parser.add_argument('--keep', action='store_true', help='Keep the replayed run directory')
+    parser.add_argument(
+        '--decisions-dir',
+        type=Path,
+        help="Where to save the replay's decisions (default: next to the baseline); CI gives a temporary directory",
+    )
     args = parser.parse_args()
     environment = dict(os.environ)
     if args.dblp_index:
@@ -72,13 +92,16 @@ def main() -> int:
 
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     run_id = f'replay-gate-{_revision()}-{stamp}'
-    people = [argument for person in args.person for argument in ('--person', person)]
+    chosen = args.person or _baseline_people(args.baseline)
+    people = [argument for person in chosen for argument in ('--person', person)]
     replay = ['run', '--replay-from', args.replay_from, '--input-profile', args.input_profile, '--run-id', run_id]
     if _benchmark(args.config, *replay, *people, environment=environment) != 0:
         print('Replay failed; see the log above.', file=sys.stderr)
         return 2
     baseline = Path(args.baseline)
-    saved = (baseline.parent if baseline.suffix == '.json' else Path.cwd()) / f'{run_id}.decisions.json'
+    folder = args.decisions_dir or (baseline.parent if baseline.suffix == '.json' else Path.cwd())
+    folder.mkdir(parents=True, exist_ok=True)
+    saved = folder / f'{run_id}.decisions.json'
     _benchmark(args.config, 'decisions', '--run-id', run_id, '--output', str(saved))
     compared = _benchmark(args.config, 'compare-decisions', '--baseline', args.baseline, '--candidate', str(saved))
     _benchmark(args.config, 'timings', '--run-id', run_id)
