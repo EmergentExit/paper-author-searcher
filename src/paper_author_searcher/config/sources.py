@@ -25,12 +25,31 @@ class HttpConfig:
         ('api.semanticscholar.org', 1.0),
         ('dspace.mit.edu', 2.0),
     )
-    # Hosts whose 429s outlast the default retries: (host, retries, longest single wait in seconds). Semantic Scholar
-    # throttles a key in windows of up to about a minute (measured 2026-11-06: 429s for ~50 s even at one request
-    # every 3 s), and an identity lookup that gives up loses an author ID. Eight retries capped at 10 s wait ~55 s.
-    rate_limit_retries: tuple[tuple[str, int, float], ...] = (('api.semanticscholar.org', 8, 10.0),)
+    # Hosts whose 429s get their own retry count instead of ``retries``: (host, retries, longest single wait in
+    # seconds). Semantic Scholar throttles a key in windows of up to about a minute (measured 2026-11-06: 429s for
+    # ~50 s even at one request every 3 s), and an identity lookup that gives up loses an author ID: eight retries
+    # capped at 10 s wait ~55 s. arXiv gets none: a quick retry inside its block only prolongs it, so its 429s go to
+    # ``refusal_backoff`` instead.
+    rate_limit_retries: tuple[tuple[str, int, float], ...] = (
+        ('api.semanticscholar.org', 8, 10.0),
+        ('export.arxiv.org', 0, 0.0),
+    )
     # A host's 429 Retry-After holds back its later requests for at most this long (a daily quota says hours).
     maximum_host_hold_seconds: float = 60.0
+    # Hosts that allow one connection at a time; their interval counts from the end of the previous response. arXiv's
+    # API terms ask for one request every 3 s over a single connection, and its answers often take longer than 3 s.
+    single_connection_hosts: tuple[str, ...] = ('export.arxiv.org',)
+    # Hosts whose 429s start a longer block: (host, hold in seconds after the 1st, 2nd, ... refusal in a row; the last
+    # repeats). arXiv's 429s carry no Retry-After and, once its window quota is spent, it refuses everything for ten
+    # minutes or more (measured 2026-11-05). A hold within maximum_host_hold_seconds is waited out and the request sent
+    # once more; a longer one fails requests at once (source_deferred) until it ends. A success resets the ladder.
+    refusal_backoff: tuple[tuple[str, tuple[float, ...]], ...] = (('export.arxiv.org', (60.0, 120.0, 300.0, 900.0)),)
+
+    def __post_init__(self) -> None:
+        if any(retries < 0 or wait < 0 for _, retries, wait in self.rate_limit_retries):
+            raise ValueError('rate_limit_retries need nonnegative retries and waits')
+        if any(not steps or min(steps) <= 0 for _, steps in self.refusal_backoff):
+            raise ValueError('refusal_backoff steps must be positive')
 
 
 @dataclass(frozen=True)

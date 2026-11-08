@@ -68,6 +68,7 @@ from .transport.http_cache import cached_client
 from .transport.http_deadline import DeadlineHttpClient, SearchDeadline
 from .transport.http_decorators import PacedHttpClient
 from .transport.pacing import Pacer, RequestPacer
+from .transport.refusals import RefusalBackoff
 from .transport.web_search import FallbackWebSearch, WebSearch
 from .workflow import PaperSearchWorkflow
 
@@ -174,7 +175,12 @@ class ServiceContainer:
         limits = self.transport_limits
         http = self.settings.http
         paced = PacedHttpClient(
-            network, http.host_request_intervals, limits.pacer_factory, http.maximum_host_hold_seconds
+            network,
+            http.host_request_intervals,
+            limits.pacer_factory,
+            http.maximum_host_hold_seconds,
+            single_connection=http.single_connection_hosts,
+            backoff=RefusalBackoff(http.refusal_backoff),
         )
         metered = budgeted_client(paced, options.max_cost_usd, options.cost_ledger, limits.daily_budget)
         cached = cached_client(metered, options.http_cache_dir, options.http_cache_mode)

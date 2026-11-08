@@ -240,11 +240,11 @@ class HttpClient:
                     'scope': 'Read/transfer attempts include retries; redirect hops are not individual attempts',
                 },
             )
-        # A rate-limited host may get more retries for its 429s (HttpConfig.rate_limit_retries); a client set to
-        # no retries at all keeps none.
+        # A host may have its own retry count for 429s (HttpConfig.rate_limit_retries): more for a key's short
+        # throttling windows, none where the host's own backoff applies. A client set to no retries keeps none.
         policy = {host: (retries, wait) for host, retries, wait in self.config.rate_limit_retries}
         rate_limited, longest_wait = policy.get(request.host, (self.retries, self.config.maximum_retry_delay))
-        rate_limited = max(rate_limited, self.retries) if self.retries else 0
+        rate_limited = rate_limited if self.retries else 0
         for attempt in range(max(self.retries, rate_limited) + 1):
             self._count(statistics, 'operation_attempts')
             try:
