@@ -19,6 +19,7 @@ from paper_author_searcher.status import AnchorKind, ResolutionStatus, Universit
 from .anchoring.model import SUPPLIED_ORCID_REASON, IdentityAnchors
 from .identity import IdentityLink, compare_identity
 from .identity_ranking import IdentityRanking
+from .orcid_choice import choose_orcid
 
 
 @dataclass
@@ -72,20 +73,21 @@ class ProfileScorer:
                 matched_affiliations.append(affiliation)
         if matched_affiliations:
             university = matched_affiliations[0]
-        orcid = None
         for candidate in group:
             author_ids.setdefault(candidate.source, candidate.author_id)
             author_id_aliases.setdefault(candidate.source, []).append(candidate.author_id)
-            if orcid is None and candidate.orcid:
-                orcid = canonical_orcid(candidate.orcid)
+        orcid = choose_orcid(group, anchors)
+        evidence = self._evidence(query, group, signals)
+        if orcid.evidence:
+            evidence.append(orcid.evidence)
         profile = ProfessorProfile(
             name=group[0].name,
             affiliations=signals.affiliations,
             author_ids=author_ids,
             identity_confidence=confidence,
             status=status,
-            evidence=self._evidence(query, group, signals),
-            orcid=orcid,
+            evidence=evidence,
+            orcid=orcid.orcid,
             research_interests=signals.topics,
             university=university,
             university_status=signals.university_status,
