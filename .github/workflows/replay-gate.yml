@@ -1,0 +1,42 @@
+# Replay-consistency gate (D3): replay the recorded benchmark run with this change's code and fail when any person's
+# identity or paper ownership decision differs from the baseline. The recording (HTTP responses, gigabytes) and the
+# DBLP dump index exist only on the self-hosted runner labelled "paper-gate", so the job runs there.
+#
+# Security: this repository is public. The job runs only for pushes to main and for pull requests from branches of
+# this repository, never for forks, and the repository requires approval before any fork pull request's workflow
+# runs. The runner's .env (outside the repository) names the machine's paths:
+#   PAPER_GATE_CONFIG, PAPER_GATE_RECORDING, PAPER_GATE_BASELINE, PAPER_GATE_VENV,
+#   PAPER_SEARCH__DBLP_DUMP__INDEX_PATH
+# A change meant to alter decisions fails this gate; once it is merged, make a new baseline from a replay of main.
+name: replay-gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: replay-gate
+  cancel-in-progress: false
+
+jobs:
+  replay-gate:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, paper-gate]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the package into the runner's environment
+        run: '"$PAPER_GATE_VENV/bin/python" -m pip install --quiet --upgrade .'
+      - name: Replay and compare decisions
+        run: >
+          nice -n 10 "$PAPER_GATE_VENV/bin/python" scripts/ci/replay_gate.py
+          --config "$PAPER_GATE_CONFIG"
+          --replay-from "$PAPER_GATE_RECORDING"
+          --baseline "$PAPER_GATE_BASELINE"
+          --dblp-index "$PAPER_SEARCH__DBLP_DUMP__INDEX_PATH"
+          --decisions-dir "$RUNNER_TEMP/replay-gate"
