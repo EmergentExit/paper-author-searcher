@@ -1,4 +1,5 @@
-"""Throttled sources are asked again at the end of collection, within one search's waiting budget."""
+"""Throttled sources are asked again at the end of collection: once and without waiting by default, or within a
+search's waiting budget when one is configured."""
 
 import unittest
 from dataclasses import replace
@@ -11,7 +12,13 @@ from paper_author_searcher.models import PaperRecord, PaperSourceResult
 from paper_author_searcher.transport.http import SourceError
 from test_cs_sources import profile
 
-CONFIG = replace(DEFAULT_COLLECTION, deferred_retry_seconds=300.0, deferred_retry_default_wait_seconds=60.0)
+# A run that puts recall first: three tries and up to five minutes of waiting per search.
+CONFIG = replace(
+    DEFAULT_COLLECTION,
+    deferred_retry_seconds=300.0,
+    deferred_retry_default_wait_seconds=60.0,
+    deferred_retry_attempts=3,
+)
 
 
 class Clock:
@@ -35,6 +42,12 @@ class RetryWindowTests(unittest.TestCase):
     def window(self, config=CONFIG):
         self.clock = Clock()
         return RetryWindow(config, self.clock, self.clock.sleep)
+
+    def test_by_default_it_asks_once_more_and_never_waits(self):
+        window = self.window(DEFAULT_COLLECTION)
+        asked = []
+        result = window.again(lambda: asked.append(1) or 'failed', lambda _: ('source_deferred', 5.0))
+        self.assertEqual((result, len(asked), self.clock.slept), ('failed', 1, []))
 
     def test_asks_at_once_then_waits_what_the_source_says_while_it_fits(self):
         answers = iter([('source_deferred', 40.0), ('source_deferred', 100.0), None])
@@ -94,10 +107,16 @@ class NoProviders:
 
 
 class CollectorRetryTests(unittest.TestCase):
-    def collector(self, search, retry=True):
+    def collector(self, search, retry=True, config=CONFIG):
         self.clock = Clock()
-        deferred_retry = DeferredRetry(CONFIG, self.clock, self.clock.sleep) if retry else None
+        deferred_retry = DeferredRetry(config, self.clock, self.clock.sleep) if retry else None
         return PaperCollector([NoProviders()], name_searches=[search], deferred_retry=deferred_retry)
+
+    def test_by_default_a_block_that_has_ended_is_recovered_without_any_wait(self):
+        search = ThrottledSearch([deferred(30.0)])
+        collected = self.collector(search, config=DEFAULT_COLLECTION).collect(profile())
+        self.assertEqual([paper.title for paper in collected.papers], ['Mine'])
+        self.assertEqual((len(search.profiles), self.clock.slept), (2, []))
 
     def test_a_throttled_name_search_is_asked_again_with_the_profile_it_searched_with(self):
         search = ThrottledSearch([deferred(30.0)])
@@ -179,14 +198,14 @@ class CompositionTests(unittest.TestCase):
         from paper_author_searcher.composition import RunOptions, ServiceContainer
         from paper_author_searcher.settings import Settings
 
-        def built(budget=300.0, **options):
-            settings = replace(Settings(), collection=replace(DEFAULT_COLLECTION, deferred_retry_seconds=budget))
+        def built(attempts=1, **options):
+            settings = replace(Settings(), collection=replace(DEFAULT_COLLECTION, deferred_retry_attempts=attempts))
             return ServiceContainer(settings, RunOptions(**options)).deferred_retry
 
         self.assertIsNotNone(built())
         self.assertIsNotNone(built(http_cache_dir='/tmp/cache', http_cache_mode='record'))
         self.assertIsNone(built(http_cache_dir='/tmp/cache', http_cache_mode='replay'))
-        self.assertIsNone(built(budget=0.0))
+        self.assertIsNone(built(attempts=0))
 
 
 if __name__ == '__main__':
