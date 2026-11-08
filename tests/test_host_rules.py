@@ -9,7 +9,7 @@ from unittest.mock import patch
 from paper_author_searcher.config import HttpConfig
 from paper_author_searcher.transport.http import HttpClient, SourceError
 from paper_author_searcher.transport.http_decorators import PacedHttpClient
-from paper_author_searcher.transport.refusals import RefusalBackoff
+from paper_author_searcher.transport.refusals import RefusalBackoff, waits_for_holds, without_waiting_for_holds
 
 ARXIV = 'https://export.arxiv.org/api/query'
 OTHER = 'https://api.example.org/works'
@@ -148,6 +148,51 @@ class RefusalHoldTests(unittest.TestCase):
         with self.assertRaises(SourceError):
             client.get(ARXIV)
         self.assertEqual((network.calls, self.slept), (1, []))
+
+
+class NoWaitingTests(unittest.TestCase):
+    def setUp(self):
+        self.clock = Clock()
+        self.slept: list[float] = []
+
+    def sleep(self, seconds):
+        self.slept.append(seconds)
+        self.clock.now += seconds
+
+    def test_a_held_ladder_host_is_refused_at_once_even_with_seconds_left(self):
+        network = Network([refusal(), refusal()])
+        backoff = RefusalBackoff([('export.arxiv.org', (30.0,))], self.clock)
+        client = PacedHttpClient(network, [], backoff=backoff, sleep=self.sleep, clock=self.clock)
+        with self.assertRaises(SourceError):
+            client.get(ARXIV)  # waits 30 s once, resends, refused again: held 30 s more
+        self.clock.now += 25  # 5 s of the hold left: ordinarily waited out
+        with without_waiting_for_holds(), self.assertRaises(SourceError) as deferred:
+            client.get(ARXIV)
+        self.assertEqual(deferred.exception.error_type, 'source_deferred')
+        self.assertEqual((network.calls, self.slept), (2, [30.0]))
+
+    def test_a_fresh_refusal_is_not_waited_out_and_resent(self):
+        network = Network([refusal(), {'ok': True}])
+        backoff = RefusalBackoff([('export.arxiv.org', (30.0,))], self.clock)
+        client = PacedHttpClient(network, [], backoff=backoff, sleep=self.sleep, clock=self.clock)
+        with without_waiting_for_holds(), self.assertRaises(SourceError):
+            client.get(ARXIV)
+        self.assertEqual((network.calls, self.slept), (1, []))
+
+    def test_a_retry_after_hold_refuses_without_a_request(self):
+        network = Network([refusal(retry_after=20)])
+        client = PacedHttpClient(network, [('api.example.org', 0.5)], sleep=self.sleep, clock=self.clock)
+        with self.assertRaises(SourceError):
+            client.get(OTHER)
+        with without_waiting_for_holds(), self.assertRaises(SourceError) as deferred:
+            client.get(OTHER)
+        self.assertEqual(deferred.exception.error_type, 'source_deferred')
+        self.assertEqual(network.calls, 1)
+
+    def test_the_mode_is_scoped_to_its_block(self):
+        with without_waiting_for_holds():
+            self.assertFalse(waits_for_holds())
+        self.assertTrue(waits_for_holds())
 
 
 class RateLimitRetriesTests(unittest.TestCase):

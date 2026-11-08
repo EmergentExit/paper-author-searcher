@@ -49,6 +49,13 @@ class RetryWindowTests(unittest.TestCase):
         result = window.again(lambda: asked.append(1) or 'failed', lambda _: ('source_deferred', 5.0))
         self.assertEqual((result, len(asked), self.clock.slept), ('failed', 1, []))
 
+    def test_its_tries_never_wait_for_a_held_host_only_the_window_waits(self):
+        from paper_author_searcher.transport.refusals import waits_for_holds
+
+        seen = []
+        self.window(DEFAULT_COLLECTION).again(lambda: seen.append(waits_for_holds()), lambda _: None)
+        self.assertEqual(seen, [False])
+
     def test_asks_at_once_then_waits_what_the_source_says_while_it_fits(self):
         answers = iter([('source_deferred', 40.0), ('source_deferred', 100.0), None])
         asked = []
