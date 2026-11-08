@@ -328,6 +328,9 @@ class PaperSourceResult:
     error: str | None = None
     pagination_complete: bool = False
     metadata_errors: list[dict] = field(default_factory=list)
+    # Why ``error`` happened (SourceError.error_type) and how long the source asked us to wait, when it said.
+    error_type: str | None = None
+    retry_after: float | None = None
 
 
 @dataclass
