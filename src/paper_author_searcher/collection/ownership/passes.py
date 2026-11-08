@@ -28,8 +28,13 @@ from paper_author_searcher.models import AnchorEvidence, Paper, PaperRecord, Pro
 from paper_author_searcher.source_traits import OPENALEX
 from paper_author_searcher.status import OwnershipStatus
 
+from .place_timeline import PlaceTimeline
 from .record_facts import RecordFacts, record_fields
 
+MISPLACED_NOTE = (
+    'Cross-source agreement not counted: the byline places the person at {places}, which their verified papers '
+    'from these years do not print and print only long before'
+)
 RARE_NAME_EVIDENCE = 'Explicit target Author ID and compatible byline under a name no other author holds in the source'
 CURATED_VENUE_EVIDENCE = (
     "Curated author profile most of whose papers are proven, in a venue where the person's verified papers appear"
@@ -159,10 +164,33 @@ class CrossSourceAgreement:
         self.config = config
 
     def apply(self, papers: Sequence[Paper], context: OwnershipContext) -> None:
+        timeline = self._timeline(papers, context.facts)
         for paper in papers:
-            self._cross_validate(paper, context.facts)
+            self._cross_validate(paper, context.facts, timeline)
 
-    def _cross_validate(self, paper: Paper, facts: RecordFacts) -> None:
+    def _timeline(self, papers: Sequence[Paper], facts: RecordFacts) -> PlaceTimeline:
+        """Where the records verified so far place the person; only strong evidence has verified a record yet."""
+        timeline = PlaceTimeline(
+            same=lambda left, right: institution_similarity(left, right) >= self.config.institution_similarity
+        )
+        for paper in papers:
+            for record in paper.records:
+                if record.ownership_status == OwnershipStatus.VERIFIED:
+                    timeline.add(record.year, facts.printed_places(record))
+        return timeline
+
+    def _misplaced(self, record: PaperRecord, facts: RecordFacts, timeline: PlaceTimeline) -> bool:
+        if record.ownership_status == OwnershipStatus.VERIFIED:
+            return False
+        places = facts.printed_places(record)
+        if not timeline.contradicts(
+            record.year, places, self.config.place_timeline_window_years, self.config.place_timeline_lag_years
+        ):
+            return False
+        record.ownership_evidence.append(MISPLACED_NOTE.format(places=', '.join(sorted(places))))
+        return True
+
+    def _cross_validate(self, paper: Paper, facts: RecordFacts, timeline: PlaceTimeline) -> None:
         if any(facts.nonstandard_reasons(record) for record in paper.records):
             for record in paper.records:
                 if record.ownership_status != OwnershipStatus.REJECTED:
@@ -177,7 +205,7 @@ class CrossSourceAgreement:
                 continue
             if not facts.identity_eligible(record):
                 continue
-            if facts.compatible_signature(record):
+            if facts.compatible_signature(record) and not self._misplaced(record, facts, timeline):
                 eligible.append(record)
         upgrades: dict[int, set[str]] = {}
         for index, left in enumerate(eligible):
