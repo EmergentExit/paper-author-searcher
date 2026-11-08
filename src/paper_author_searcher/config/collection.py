@@ -46,8 +46,22 @@ class CollectionConfig:
     contender_minimum_share: float = 0.25
     contender_minimum_evidence: int = 5
     contender_rival_share: float = 0.05
+    # Sources that failed for throttling (collection.deferred_retry) are asked again at the end of collection,
+    # waiting out their hold for at most this many seconds per search (0: never ask again). arXiv's blocks have lasted
+    # two minutes to more than ten, and a lost arXiv name search can lose a person's arXiv-only papers.
+    deferred_retry_seconds: float = 300.0
+    # The error types (SourceError.error_type) that mean "throttled; ask later".
+    deferred_retry_error_types: tuple[str, ...] = ('source_deferred', 'rate_limited')
+    # The wait before asking again when a throttled source named no wait of its own.
+    deferred_retry_default_wait_seconds: float = 60.0
+    # Tries per retried request, the first one included.
+    deferred_retry_attempts: int = 3
 
     def __post_init__(self) -> None:
+        if self.deferred_retry_seconds < 0 or self.deferred_retry_default_wait_seconds <= 0:
+            raise ValueError('deferred_retry_seconds must be nonnegative and its default wait positive')
+        if self.deferred_retry_attempts < 1:
+            raise ValueError('deferred_retry_attempts must be positive')
         if self.ambiguity_policy not in AMBIGUITY_POLICIES:
             raise ValueError(f'ambiguity_policy must be one of {AMBIGUITY_POLICIES}')
         if self.maximum_contenders < 1:

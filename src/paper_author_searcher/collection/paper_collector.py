@@ -5,7 +5,8 @@ import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import copy_context
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from functools import partial
 from typing import Any, Protocol
 
 from paper_author_searcher.config import (
@@ -28,6 +29,7 @@ from paper_author_searcher.status import IdentityConfirmation, OwnershipStatus, 
 from paper_author_searcher.timings import phase
 
 from .contender_adjudication import ContenderEvidence, DepartmentAdjudicator
+from .deferred_retry import DeferredRetry, Failure, RetryWindow
 from .listed_works import ListedWorkRetriever
 from .paper_authorship import canonical_author_id
 from .paper_deduplication import deduplicate_papers
@@ -46,6 +48,27 @@ class NameSearch(Protocol):
     def author_key(self, profile: ProfessorProfile) -> str: ...
 
     def collect(self, profile: ProfessorProfile) -> PaperSourceResult: ...
+
+
+@dataclass
+class NameSearchRun:
+    """One name search's result and the profile it searched with, so a throttled search can be asked again."""
+
+    search: NameSearch
+    profile: ProfessorProfile
+    result: PaperSourceResult
+
+    def again(self, retry: RetryWindow) -> 'NameSearchRun':
+        """The search asked again if it failed for throttling; itself otherwise."""
+        if not retry.retryable(self.result.error_type):
+            return self
+        with phase('collection: name search ' + self.search.name):
+            result = retry.again(partial(self.search.collect, self.profile), _failure)
+        return replace(self, result=result)
+
+
+def _failure(result: PaperSourceResult) -> Failure:
+    return (result.error_type, result.retry_after) if result.error else None
 
 
 class IdentityConfirmationRequired(ValueError):
@@ -74,6 +97,7 @@ class PaperCollector:
         adjudicator: DepartmentAdjudicator | None = None,
         name_searches: Sequence[NameSearch] = (),
         career: CareerTimeline | None = None,
+        deferred_retry: DeferredRetry | None = None,
     ) -> None:
         self.providers = list(providers)
         # Optional: fetch works the person lists themselves that no selected author ID returned.
@@ -84,6 +108,8 @@ class PaperCollector:
         self.name_searches = list(name_searches)
         # Optional: where and when the person was before (career.CareerTimeline), for the ownership checks.
         self.career = career
+        # Optional: ask sources that throttled us again at the end of collection (collection.deferred_retry).
+        self.deferred_retry = deferred_retry
         # Optional: merge the person's split author profiles found by their verified coauthor network.
         self.ownership_validator = ownership_validator or PaperOwnershipValidator()
         self.deduplication = deduplication
@@ -147,13 +173,13 @@ class PaperCollector:
 
     def _search_names(
         self, profile: ProfessorProfile, selected: dict[str, list[str]]
-    ) -> tuple[list[PaperSourceResult], ProfessorProfile, dict[str, list[str]]]:
+    ) -> tuple[list[NameSearchRun], ProfessorProfile, dict[str, list[str]]]:
         """Each name search in order; each sees the name keys of the ones before it, as an alias of the profile."""
         selected = dict(selected)
         found_by_name = []
         for search in self.name_searches:
             with phase('collection: name search ' + search.name):
-                found_by_name.append(search.collect(profile))
+                found_by_name.append(NameSearchRun(search, profile, search.collect(profile)))
             key = search.author_key(profile)
             selected[search.name] = sorted({*selected.get(search.name, []), key})
             aliases = {**profile.author_id_aliases, search.name: selected[search.name]}
@@ -231,12 +257,22 @@ class PaperCollector:
         if confirmation != ResolutionStatus.AMBIGUOUS_CONTENDERS:
             # Joined in the configured order after the author-ID records, exactly as a one-by-one run adds them.
             found_by_name, profile, selected = by_name.result() if by_name else self._search_names(profile, selected)
-            for found in found_by_name:
-                sources.append(found)
-                records.extend(found.papers)
+        else:
+            found_by_name = []
+        retry = self.deferred_retry.window() if self.deferred_retry is not None else None
+        listed = None
         if self.listed_works is not None and confirmation != ResolutionStatus.AMBIGUOUS_CONTENDERS:
+            named = [record for run in found_by_name for record in run.result.papers]
             with phase('collection: listed works'):
-                listed = self.listed_works.retrieve(profile, records)
+                listed = self.listed_works.retrieve(profile, [*records, *named], retry)
+        if retry is not None:
+            with phase('collection: retrying throttled name searches'):
+                found_by_name = [run.again(retry) for run in found_by_name]
+        # Joined in the configured order: author-ID records, then each name search's, then the listed works.
+        for run in found_by_name:
+            sources.append(run.result)
+            records.extend(run.result.papers)
+        if listed is not None:
             sources.append(listed)
             records.extend(listed.papers)
         complete = bool(sources) and all(fetched.complete for fetched in sources)
