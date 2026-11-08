@@ -143,6 +143,16 @@ class RecordFacts:
         """The record's author entries under the author ID it was collected for, whatever the identity holds."""
         return _details_under(record, {canonical_author_id(record.source, record.source_author_id)})
 
+    def printed_places(self, record: PaperRecord) -> set[str]:
+        """The institutions the record's byline prints for the person (not those of their author profile)."""
+        return {
+            institution['display_name']
+            for author in self.target_details(record)
+            if author.get('affiliation_scope') != 'author_profile'
+            for institution in author.get('institutions') or []
+            if institution.get('display_name')
+        }
+
     def signature_score(self, details: Sequence[AuthorDetail], record: PaperRecord) -> tuple[float, list[str]]:
         signatures = []
         for author in details:

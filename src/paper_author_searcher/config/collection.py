@@ -136,6 +136,13 @@ class OwnershipConfig:
     # coauthors than this link nobody.
     namesake_unproven_sources: tuple[str, ...] = ('dblp', 'arxiv')
     namesake_group_minimum_papers: int = 2
+    # Cross-source agreement does not verify a record whose byline places contradict where the person's strongly
+    # verified papers place them (ownership/place_timeline.py): their papers within this many years of it print none
+    # of its places, and each of its places was theirs only more than place_timeline_lag_years before it. A database
+    # keeps a former school for a year or two after a move; tested on both baselines, a 3-year lag touches no truth
+    # paper, 2 years starts to.
+    place_timeline_window_years: int = 1
+    place_timeline_lag_years: int = 3
     namesake_group_maximum_coauthors: int = 12
     # Venues anyone can post to (normalized words), which link no group of papers to another: an identity found by name
     # and school alone keeps a separate group only through a journal or conference it shares with the school's group.
