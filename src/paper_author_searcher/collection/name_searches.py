@@ -101,6 +101,8 @@ class PagedNameSearch(ABC):
         except Exception as exc:
             log_isolated_failure(logger, '%s author search failed for %s: %s', self.name, key, exc)
             result.error = str(exc)
+            result.error_type = getattr(exc, 'error_type', None)
+            result.retry_after = getattr(exc, 'retry_after', None)
         return result
 
 
