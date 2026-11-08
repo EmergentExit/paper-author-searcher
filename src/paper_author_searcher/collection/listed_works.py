@@ -38,6 +38,7 @@ from paper_author_searcher.quality.evaluation_matching import bibliographic_name
 from paper_author_searcher.transport.http import SourceError
 
 from .arxiv_api import ArxivApi, Entries
+from .deferred_retry import Failure, RetryWindow
 from .paper_providers import OpenAlexPaperProvider, SemanticScholarPaperProvider, parse_year
 
 logger = logging.getLogger(__name__)
@@ -377,11 +378,15 @@ class ListedWorkRetriever:
             covered |= record.work_keys()
         return sorted(set(profile.listed_works) - covered)
 
-    def retrieve(self, profile: ProfessorProfile, records: Sequence[PaperRecord]) -> PaperSourceResult:
+    def retrieve(
+        self, profile: ProfessorProfile, records: Sequence[PaperRecord], retry: RetryWindow | None = None
+    ) -> PaperSourceResult:
+        """The listed works the records miss; with ``retry``, the sources that throttled a work are asked again at
+        the end."""
         result = PaperSourceResult(source=LISTED_SOURCE, author_id=LISTED_SOURCE_ID)
         missing = self.missing(profile, records) if self.config.enabled else []
         keys = missing[: self.config.maximum_lookups]
-        for record, errors in self._look_up_all(keys, profile):
+        for record, errors in self._look_up_all(keys, profile, retry):
             # Merged in the works' order, so the result does not depend on which lookup finished first.
             result.metadata_errors.extend(errors)
             if record is not None:
@@ -393,30 +398,65 @@ class ListedWorkRetriever:
         return result
 
     def _look_up_all(
-        self, keys: Sequence[str], profile: ProfessorProfile
-    ) -> list[tuple[PaperRecord | None, list[dict[str, str]]]]:
+        self, keys: Sequence[str], profile: ProfessorProfile, retry: RetryWindow | None = None
+    ) -> list[tuple[PaperRecord | None, list[dict[str, Any]]]]:
         """Chain of responsibility, one source at a time: each source is asked for every work still missing, so a
         work ends at the first source that has it; a failing source is skipped for that work and its error kept."""
         found: dict[str, PaperRecord] = {}
-        errors: dict[str, list[dict[str, str]]] = {key: [] for key in keys}
+        errors: dict[str, list[dict[str, Any]]] = {key: [] for key in keys}
         pending = list(keys)
         for lookup in self.lookups:
             if not pending:
                 break
-            still_missing = []
-            for key, outcome in zip(pending, self._ask(lookup, pending, profile), strict=True):
-                if outcome.error is not None:
-                    log_isolated_failure(
-                        logger, 'Listed work %s lookup in %s failed: %s', key, lookup.name, outcome.error
-                    )
-                    errors[key].append({'paper_id': key, 'source': lookup.name, 'error': str(outcome.error)})
-                    still_missing.append(key)
-                elif outcome.value is not None:
-                    found[key] = outcome.value
-                else:
-                    still_missing.append(key)
-            pending = still_missing
+            pending = self._settle(lookup, pending, self._ask(lookup, pending, profile), found, errors)
+        if retry is not None:
+            self._retry_throttled(profile, retry, found, errors)
         return [(found.get(key), errors[key]) for key in keys]
+
+    @staticmethod
+    def _settle(
+        lookup: WorkLookup,
+        keys: Sequence[str],
+        outcomes: Sequence[Outcome[PaperRecord | None]],
+        found: dict[str, PaperRecord],
+        errors: dict[str, list[dict[str, Any]]],
+    ) -> list[str]:
+        """Record one source's answers; the keys it did not find."""
+        missing = []
+        for key, outcome in zip(keys, outcomes, strict=True):
+            if outcome.error is not None:
+                log_isolated_failure(logger, 'Listed work %s lookup in %s failed: %s', key, lookup.name, outcome.error)
+                errors[key].append(_lookup_error(key, lookup.name, outcome.error))
+                missing.append(key)
+            elif outcome.value is not None:
+                found[key] = outcome.value
+            else:
+                missing.append(key)
+        return missing
+
+    def _retry_throttled(
+        self,
+        profile: ProfessorProfile,
+        retry: RetryWindow,
+        found: dict[str, PaperRecord],
+        errors: dict[str, list[dict[str, Any]]],
+    ) -> None:
+        """Ask each source again for the works it throttled that no source found, in the chain's order."""
+        for lookup in self.lookups:
+            keys = [
+                key
+                for key, entries in errors.items()
+                if key not in found
+                and any(
+                    entry['source'] == lookup.name and retry.retryable(entry.get('error_type')) for entry in entries
+                )
+            ]
+            if not keys:
+                continue
+            for key in keys:
+                errors[key] = [entry for entry in errors[key] if entry['source'] != lookup.name]
+            outcomes = retry.again(partial(self._ask, lookup, keys, profile), _throttled)
+            self._settle(lookup, keys, outcomes, found, errors)
 
     def _ask(
         self, lookup: WorkLookup, keys: Sequence[str], profile: ProfessorProfile
@@ -428,6 +468,22 @@ class ListedWorkRetriever:
             return batch.unwrap()
         calls = [partial(attempt, partial(lookup.find, key, profile), LOOKUP_ERRORS) for key in keys]
         return in_order(calls, self.config.lookup_workers, 'listed-works')
+
+
+def _lookup_error(key: str, source: str, error: Exception) -> dict[str, Any]:
+    entry: dict[str, Any] = {'paper_id': key, 'source': source, 'error': str(error)}
+    for name in ('error_type', 'retry_after'):
+        if getattr(error, name, None) is not None:
+            entry[name] = getattr(error, name)
+    return entry
+
+
+def _throttled(outcomes: Sequence[Outcome[PaperRecord | None]]) -> Failure:
+    """The first failure among a source's answers, as (error type, wait) for the retry window."""
+    for outcome in outcomes:
+        if outcome.error is not None:
+            return getattr(outcome.error, 'error_type', None), getattr(outcome.error, 'retry_after', None)
+    return None
 
 
 def _missing_is_none(fetch: Any) -> Any:

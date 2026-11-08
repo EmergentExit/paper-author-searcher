@@ -15,6 +15,7 @@ from .collection.authorship_places import AuthorshipPlaces
 from .collection.contender_adjudication import DepartmentAdjudicator
 from .collection.cs_sources import OpenReviewProfiles
 from .collection.dblp_dump import DblpDumpIndex
+from .collection.deferred_retry import DeferredRetry
 from .collection.listed_works import ListedWorkRetriever
 from .collection.name_rarity import NameRarity
 from .collection.paper_collector import NameSearch, PaperCollector
@@ -64,7 +65,7 @@ from .source_catalog import IDENTITY_SOURCES, NAME_SEARCHES, PAPER_SOURCES, PDF_
 from .timings import HttpMeter, TimedHttpClient
 from .transport.http import HttpClient, HttpTransport
 from .transport.http_budget import CostLedger, DailyBudget, budgeted_client, shared_ledger
-from .transport.http_cache import cached_client
+from .transport.http_cache import CacheMode, cached_client
 from .transport.http_deadline import DeadlineHttpClient, SearchDeadline
 from .transport.http_decorators import PacedHttpClient
 from .transport.pacing import Pacer, RequestPacer
@@ -433,7 +434,16 @@ class ServiceContainer:
             name_searches=self.name_searches,
             career=self.career,
             adjudicator=DepartmentAdjudicator(self.collection_config, DepartmentMatcher(self.settings.precision)),
+            deferred_retry=self.deferred_retry,
         )
+
+    @cached_property
+    def deferred_retry(self) -> DeferredRetry | None:
+        """Asks throttled sources again at the end of collection. None when ``deferred_retry_attempts`` is 0, and for
+        a replay: a recorded answer is the same however often it is asked."""
+        config, options = self.collection_config, self.options
+        replay = bool(options.http_cache_dir) and options.http_cache_mode == CacheMode.REPLAY.value
+        return DeferredRetry(config) if config.deferred_retry_attempts and not replay else None
 
     @cached_property
     def career(self) -> CareerTimeline:
