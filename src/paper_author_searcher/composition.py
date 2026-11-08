@@ -439,11 +439,11 @@ class ServiceContainer:
 
     @cached_property
     def deferred_retry(self) -> DeferredRetry | None:
-        """Asks throttled sources again at the end of collection. None when ``deferred_retry_seconds`` is 0, and for
-        a replay: a recorded answer is the same however long one waits."""
+        """Asks throttled sources again at the end of collection. None when ``deferred_retry_attempts`` is 0, and for
+        a replay: a recorded answer is the same however often it is asked."""
         config, options = self.collection_config, self.options
         replay = bool(options.http_cache_dir) and options.http_cache_mode == CacheMode.REPLAY.value
-        return DeferredRetry(config) if config.deferred_retry_seconds and not replay else None
+        return DeferredRetry(config) if config.deferred_retry_attempts and not replay else None
 
     @cached_property
     def career(self) -> CareerTimeline:

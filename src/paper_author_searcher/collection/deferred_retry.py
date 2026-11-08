@@ -5,6 +5,10 @@ A source that throttles us (arXiv's load-based 429s, a host the transport is hol
 after refusing a name search on 2026-11-07), while a person's collection runs for several, so the requests that
 failed that way are asked again once the rest of collection is done.
 
+By default a failed request is asked once more and nothing waits: the time since the failure is the wait, and a
+source still held is refused at once by the transport (``source_deferred``) without a request. A wait budget
+(``deferred_retry_seconds``) lets a run that puts recall first also wait out a hold that ends soon enough.
+
 ``RetryWindow`` decides only when to ask: its callers decide what to ask again. One window is one search's budget
 of seconds to wait, shared by every retry in it, so a long block cannot hold a search past the budget.
 """
@@ -37,7 +41,8 @@ class RetryWindow:
         return error_type in self.config.deferred_retry_error_types
 
     def again(self, ask: Callable[[], T], failure: Callable[[T], Failure]) -> T:
-        """Ask once more; while the answer failed for throttling and its wait fits the window, wait and ask again."""
+        """Ask once more now; while tries remain, the answer failed for throttling and its wait fits the window, wait
+        and ask again."""
         answer = ask()
         for _ in range(self.config.deferred_retry_attempts - 1):
             wait = self._wait(failure(answer))
