@@ -5,13 +5,17 @@ type checking and to readers; nothing is reached through ``__getattr__`` magic. 
 client at the bottom of a chain.
 """
 
+import threading
+import time
 from collections.abc import Callable, Iterable
+from contextlib import nullcontext
 from http import HTTPStatus
 from typing import Any
 from urllib.parse import urlsplit
 
 from .http import SourceError
 from .pacing import Pacer, RequestPacer
+from .refusals import RefusalBackoff
 
 
 class HttpClientDecorator:
@@ -93,10 +97,18 @@ def unwrap(client: Any) -> Any:
 
 
 class PacedHttpClient(HttpClientDecorator):
-    """Keeps each configured host's minimum request interval. It belongs directly above the network client, below
-    the cache, so only requests that really go out wait. A pacer shared between processes keeps the interval across
-    all of them. When a host answers 429 with Retry-After, the host is held back for that long, up to
-    ``maximum_hold`` seconds: a daily quota's hours-long answer must not put every search to sleep."""
+    """Keeps each configured host's request rules. It belongs directly above the network client, below the cache, so
+    only requests that really go out wait. A pacer shared between processes keeps the interval across all of them.
+
+    - Interval: at least the host's interval between request starts.
+    - One connection (``single_connection``): no request to the host starts while another is in flight, and the
+      interval counts from the end of the previous response, as arXiv's terms require.
+    - Refusals: a 429 with Retry-After holds the host back for that long, up to ``maximum_hold`` seconds (a daily
+      quota's hours-long answer must not put every search to sleep). For a host with a ``backoff`` ladder a 429 holds
+      it for the ladder's next step: the refused request waits out a hold within ``maximum_hold`` and is sent once
+      more; past that, it and every request until the hold ends fail at once as ``source_deferred``, so a blocked
+      host is not asked again while it is blocked.
+    """
 
     def __init__(
         self,
@@ -104,22 +116,17 @@ class PacedHttpClient(HttpClientDecorator):
         intervals: Iterable[tuple[str, float]],
         pacer_factory: Callable[[float], Pacer] = RequestPacer,
         maximum_hold: float = 60.0,
+        single_connection: Iterable[str] = (),
+        backoff: RefusalBackoff | None = None,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         super().__init__(client)
-        self.pacers = {host.lower(): pacer_factory(interval) for host, interval in intervals if interval > 0}
+        self.intervals = {host.lower(): interval for host, interval in intervals if interval > 0}
+        self.pacers = {host: pacer_factory(interval) for host, interval in self.intervals.items()}
         self.maximum_hold = maximum_hold
-
-    def _wait(self, url: str) -> None:
-        host = (urlsplit(url).hostname or '').lower()
-        pacer = self.pacers.get(host)
-        if pacer is not None:
-            pacer.wait(host)
-
-    def _note_refusal(self, url: str, error: SourceError) -> None:
-        host = (urlsplit(url).hostname or '').lower()
-        pacer = self.pacers.get(host)
-        if pacer is not None and error.status_code == HTTPStatus.TOO_MANY_REQUESTS and error.retry_after:
-            pacer.hold(host, min(float(error.retry_after), self.maximum_hold))
+        self.connections = {host.lower(): threading.Lock() for host in single_connection}
+        self.backoff = backoff or RefusalBackoff()
+        self._sleep = sleep
 
     def get(
         self,
@@ -128,12 +135,7 @@ class PacedHttpClient(HttpClientDecorator):
         headers: dict[str, str] | None = None,
         xml: bool = False,
     ) -> Any:
-        self._wait(url)
-        try:
-            return self.client.get(url, params, headers, xml)
-        except SourceError as error:
-            self._note_refusal(url, error)
-            raise
+        return self._send(url, lambda: self.client.get(url, params, headers, xml))
 
     def post_json(
         self,
@@ -143,12 +145,9 @@ class PacedHttpClient(HttpClientDecorator):
         headers: dict[str, str] | None = None,
         expected_type: type = dict,
     ) -> Any:
-        self._wait(url)
-        try:
-            return super().post_json(url, payload, params, headers, expected_type)
-        except SourceError as error:
-            self._note_refusal(url, error)
-            raise
+        return self._send(
+            url, lambda: super(PacedHttpClient, self).post_json(url, payload, params, headers, expected_type)
+        )
 
     def probe(
         self,
@@ -158,5 +157,73 @@ class PacedHttpClient(HttpClientDecorator):
         maximum_redirects: int = 5,
         redirect_guard: Callable[[str], None] | None = None,
     ) -> Any:
-        self._wait(url)
-        return super().probe(url, maximum_bytes, html_bytes, maximum_redirects, redirect_guard)
+        return self._send(
+            url,
+            lambda: super(PacedHttpClient, self).probe(
+                url, maximum_bytes, html_bytes, maximum_redirects, redirect_guard
+            ),
+            note_refusals=False,
+        )
+
+    def _send(self, url: str, request: Callable[[], Any], note_refusals: bool = True) -> Any:
+        host = (urlsplit(url).hostname or '').lower()
+        sent_after_refusal = False
+        while True:
+            self._refuse_while_held(host)
+            with self.connections.get(host) or nullcontext():
+                self._wait(host)
+                try:
+                    answer = request()
+                except SourceError as error:
+                    hold = self._note_refusal(host, error) if note_refusals else None
+                    if hold is not None and hold <= self.maximum_hold and not sent_after_refusal:
+                        sent_after_refusal = True
+                        continue
+                    raise
+                finally:
+                    self._after_response(host)
+            if self.backoff.covers(host):
+                self.backoff.succeeded(host)
+            return answer
+
+    def _wait(self, host: str) -> None:
+        pacer = self.pacers.get(host)
+        if pacer is not None:
+            pacer.wait(host)
+
+    def _after_response(self, host: str) -> None:
+        """A single-connection host's interval counts from the end of the response."""
+        pacer = self.pacers.get(host)
+        if pacer is not None and host in self.connections:
+            pacer.hold(host, self.intervals[host])
+
+    def _refuse_while_held(self, host: str) -> None:
+        """Wait out a host's backoff hold within ``maximum_hold``; past it, refuse without asking."""
+        if not self.backoff.covers(host):
+            return
+        remaining = self.backoff.remaining(host)
+        if 0 < remaining <= self.maximum_hold:
+            # The pacer holds a host for at most maximum_hold (other processes share it); sleep out the rest here.
+            self._sleep(remaining)
+        elif remaining > self.maximum_hold:
+            raise SourceError(
+                f'{host} refused recent requests; not asked again for {remaining:.0f} s',
+                status_code=HTTPStatus.TOO_MANY_REQUESTS,
+                error_type='source_deferred',
+                retry_after=remaining,
+                endpoint_host=host,
+            )
+
+    def _note_refusal(self, host: str, error: SourceError) -> float | None:
+        """Hold the host back after a 429; the hold of a host with a backoff ladder, None for any other."""
+        if error.status_code != HTTPStatus.TOO_MANY_REQUESTS:
+            return None
+        pacer = self.pacers.get(host)
+        if self.backoff.covers(host):
+            hold = self.backoff.refused(host)
+            if pacer is not None:
+                pacer.hold(host, min(hold, self.maximum_hold))
+            return hold
+        if pacer is not None and error.retry_after:
+            pacer.hold(host, min(float(error.retry_after), self.maximum_hold))
+        return None
