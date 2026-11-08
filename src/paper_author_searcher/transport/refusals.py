@@ -1,9 +1,9 @@
 """How long to leave a host alone after it refuses us (HTTP 429), for hosts whose refusals start a longer block.
 
-arXiv answers too many requests in a window with 429s that carry no Retry-After and then refuses everything for
-ten minutes or more (measured 2026-11-05: 147 requests at one per 3-4 s succeeded, then 62 refusals in a row).
-Asking again sooner only prolongs the block, so each consecutive refusal holds the host for the next, longer step
-of its ladder, and a success resets it.
+arXiv throttles with 429s that carry no Retry-After, and not at a fixed count: on 2026-11-05 it took 147 requests at
+one per 3-4 s and then refused everything for ten minutes or more; on 2026-11-07 it refused after about 50 in nine
+minutes and took requests again two minutes later. Asking again sooner only prolongs a block, so each consecutive
+refusal holds the host for the next, longer step of its ladder, and a success resets it.
 """
 
 import threading

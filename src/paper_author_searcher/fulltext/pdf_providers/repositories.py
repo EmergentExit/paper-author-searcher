@@ -2,9 +2,11 @@
 
 import re
 import xml.etree.ElementTree as ET
-from typing import Any
+from collections.abc import Iterable
 
-from paper_author_searcher.config import DEFAULT_PDF, PDFConfig
+from paper_author_searcher.collection.arxiv_api import ArxivApi, Entries
+from paper_author_searcher.concurrency import Outcome
+from paper_author_searcher.config import DEFAULT_PDF, DEFAULT_SOURCES, PDFConfig, SourceConfig
 from paper_author_searcher.fulltext.pdf_identity import (
     arxiv_id,
     arxiv_ids,
@@ -19,7 +21,6 @@ from paper_author_searcher.matching import normalize_title
 from paper_author_searcher.models import PDFCandidate, PDFProviderResult
 from paper_author_searcher.status import IdentityStatus, ProviderStatus
 from paper_author_searcher.transport.http import HttpTransport, SourceError
-from paper_author_searcher.transport.pacing import RequestPacer
 
 from .base import MetadataPDFProvider, make_candidate
 
@@ -64,44 +65,75 @@ class NBERPDFProvider(MetadataPDFProvider):
 
 
 class ArxivPDFProvider:
+    """PDF links from the arXiv API, for papers with arXiv identifiers (or, optionally, an exact title).
+
+    ``prepare`` asks for every paper's entries in a few batched requests (collection.arxiv_api) before the papers
+    are looked up one by one; a paper ``prepare`` did not cover is asked for alone, exactly as before.
+    """
+
     name = 'arxiv'
     atom = '{http://www.w3.org/2005/Atom}'
     arxiv = '{http://arxiv.org/schemas/atom}'
 
-    def __init__(self, client: HttpTransport, config: PDFConfig = DEFAULT_PDF) -> None:
+    def __init__(
+        self, client: HttpTransport, config: PDFConfig = DEFAULT_PDF, sources: SourceConfig = DEFAULT_SOURCES
+    ) -> None:
         self.client = client
         self.config = config
-        self.pacer = RequestPacer(config.arxiv_request_interval)
+        self.api = ArxivApi(client, config.arxiv_url, sources)
+        self._by_id: dict[str, Outcome[Entries]] = {}
+        self._by_title: dict[str, Outcome[Entries]] = {}
+
+    def prepare(self, papers: Iterable[JSONObject]) -> None:
+        identifiers: list[str] = []
+        titles: list[str] = []
+        for paper in papers:
+            ids = arxiv_ids(paper)
+            identifiers += ids
+            if self._searches(paper, ids):
+                titles.append(paper['title'])
+        self._by_id = self.api.by_ids(identifiers) if identifiers else {}
+        self._by_title = (
+            self.api.by_titles(titles, self.config.arxiv_search_results, self._same_title) if titles else {}
+        )
 
     def find(self, paper: JSONObject) -> PDFProviderResult:
         identifiers = arxiv_ids(paper)
-        search = not identifiers and self.config.arxiv_title_search and bool(paper.get('title'))
+        search = self._searches(paper, identifiers)
         if not identifiers and not search:
             return PDFProviderResult(self.name, status=ProviderStatus.NOT_APPLICABLE)
         result = PDFProviderResult(self.name)
         try:
-            self._wait_for_interval()
-            params: dict[str, Any] = {'id_list': ','.join(identifiers)}
-            if search:
-                title = ' '.join(paper['title'].replace('"', ' ').split())
-                params = {'search_query': 'ti:"' + title + '"', 'max_results': self.config.arxiv_search_results}
-            feed = self.client.get(self.config.arxiv_url, params=params, xml=True)
-            entries = feed.findall(self.atom + 'entry')
+            entries = self._title_entries(paper['title']) if search else self._id_entries(identifiers)
             if not entries and not search:
                 raise SourceError('arXiv returned no matching entries')
             for entry in entries:
-                if search and normalize_title(entry.findtext(self.atom + 'title') or '') != normalize_title(
-                    paper['title']
-                ):
-                    continue
                 result.candidates.extend(self._entry_candidates(paper, identifiers, entry, search))
         except (SourceError, ValueError, TypeError) as exc:
             result.status = ProviderStatus.ERROR
             result.errors.append(str(exc))
         return result
 
-    def _wait_for_interval(self) -> None:
-        self.pacer.wait()
+    def _searches(self, paper: JSONObject, identifiers: list[str]) -> bool:
+        return not identifiers and self.config.arxiv_title_search and bool(paper.get('title'))
+
+    def _id_entries(self, identifiers: list[str]) -> Entries:
+        if not all(identifier in self._by_id for identifier in identifiers):
+            return self.api.entries_for(identifiers)
+        entries: Entries = []
+        for identifier in identifiers:
+            entries += [entry for entry in self._by_id[identifier].unwrap() if entry not in entries]
+        return entries
+
+    def _title_entries(self, title: str) -> Entries:
+        found = self._by_title.get(title)
+        if found is None:
+            found = self.api.by_titles([title], self.config.arxiv_search_results, self._same_title)[title]
+        return found.unwrap()
+
+    @staticmethod
+    def _same_title(found: str, wanted: str) -> bool:
+        return normalize_title(found) == normalize_title(wanted)
 
     def _entry_candidates(
         self, paper: JSONObject, requested: list[str], entry: ET.Element, search: bool = False

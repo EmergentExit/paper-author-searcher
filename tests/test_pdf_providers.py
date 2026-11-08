@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import replace
 from unittest.mock import Mock, patch
 
-from paper_author_searcher.config import DEFAULT_PDF
+from paper_author_searcher.config import DEFAULT_PDF, HttpConfig
 from paper_author_searcher.fulltext.pdf_identity import arxiv_id, metadata_identity
 from paper_author_searcher.fulltext.pdf_providers import (
     ArxivPDFProvider,
@@ -19,7 +19,6 @@ from paper_author_searcher.fulltext.pdf_providers import (
     openalex_arxiv_ids,
 )
 from paper_author_searcher.transport.http import SourceError, URLProbe
-from paper_author_searcher.transport.pacing import RequestPacer
 
 
 def paper():
@@ -386,13 +385,11 @@ class ProviderTests(unittest.TestCase):
         )
         self.assertEqual(ArxivPDFProvider(client).find(saved).status, 'error')
 
-    def test_arxiv_observes_configured_interval(self):
-        provider = ArxivPDFProvider(Mock(), replace(DEFAULT_PDF, arxiv_request_interval=3))
-        sleep = Mock()
-        provider.pacer = RequestPacer(3, clock=iter([10, 11]).__next__, sleep=sleep)
-        provider._wait_for_interval()  # first request at t=10 starts immediately
-        provider._wait_for_interval()  # next one at t=11 waits for t=13
-        sleep.assert_called_once_with(2)
+    def test_arxiv_request_rules_belong_to_the_transport(self):
+        http = HttpConfig()
+        self.assertIn(('export.arxiv.org', 3.0), http.host_request_intervals)
+        self.assertIn('export.arxiv.org', http.single_connection_hosts)
+        self.assertIn('export.arxiv.org', dict(http.refusal_backoff))
 
     def test_landing_page_uses_explicit_citation_link_and_identity(self):
         saved = paper()
