@@ -8,7 +8,29 @@ refusal holds the host for the next, longer step of its ladder, and a success re
 
 import threading
 import time
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
+
+# Whether a request may wait for a host's hold to end (False: a held host is refused at once, nothing waits).
+_WAITS_FOR_HOLDS: ContextVar[bool] = ContextVar('waits_for_holds', default=True)
+
+
+@contextmanager
+def without_waiting_for_holds() -> Iterator[None]:
+    """Requests in this block never wait for a held host: they are refused at once as ``source_deferred``.
+
+    For a retry that must cost no time: it is worth one request when the host is free, and nothing when it is not.
+    """
+    token = _WAITS_FOR_HOLDS.set(False)
+    try:
+        yield
+    finally:
+        _WAITS_FOR_HOLDS.reset(token)
+
+
+def waits_for_holds() -> bool:
+    return _WAITS_FOR_HOLDS.get()
 
 
 class RefusalBackoff:
