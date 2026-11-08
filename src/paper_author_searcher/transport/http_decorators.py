@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 
 from .http import SourceError
 from .pacing import Pacer, RequestPacer
-from .refusals import RefusalBackoff
+from .refusals import RefusalBackoff, waits_for_holds
 
 
 class HttpClientDecorator:
@@ -119,6 +119,7 @@ class PacedHttpClient(HttpClientDecorator):
         single_connection: Iterable[str] = (),
         backoff: RefusalBackoff | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         super().__init__(client)
         self.intervals = {host.lower(): interval for host, interval in intervals if interval > 0}
@@ -127,6 +128,10 @@ class PacedHttpClient(HttpClientDecorator):
         self.connections = {host.lower(): threading.Lock() for host in single_connection}
         self.backoff = backoff or RefusalBackoff()
         self._sleep = sleep
+        self._clock = clock
+        # Retry-After holds this client placed: host -> when the hold ends (the pacer keeps no hold apart from slots).
+        self._held_until: dict[str, float] = {}
+        self._holds_lock = threading.Lock()
 
     def get(
         self,
@@ -176,7 +181,7 @@ class PacedHttpClient(HttpClientDecorator):
                     answer = request()
                 except SourceError as error:
                     hold = self._note_refusal(host, error) if note_refusals else None
-                    if hold is not None and hold <= self.maximum_hold and not sent_after_refusal:
+                    if hold is not None and hold <= self.maximum_hold and not sent_after_refusal and waits_for_holds():
                         sent_after_refusal = True
                         continue
                     raise
@@ -198,21 +203,35 @@ class PacedHttpClient(HttpClientDecorator):
             pacer.hold(host, self.intervals[host])
 
     def _refuse_while_held(self, host: str) -> None:
-        """Wait out a host's backoff hold within ``maximum_hold``; past it, refuse without asking."""
+        """Wait out a host's backoff hold within ``maximum_hold``; past it, or when requests may not wait for holds
+        (refusals.without_waiting_for_holds), refuse without asking."""
+        remaining = self._hold_remaining(host)
+        if remaining > 0 and not waits_for_holds():
+            raise self._deferred(host, remaining)
         if not self.backoff.covers(host):
             return
-        remaining = self.backoff.remaining(host)
         if 0 < remaining <= self.maximum_hold:
             # The pacer holds a host for at most maximum_hold (other processes share it); sleep out the rest here.
             self._sleep(remaining)
         elif remaining > self.maximum_hold:
-            raise SourceError(
-                f'{host} refused recent requests; not asked again for {remaining:.0f} s',
-                status_code=HTTPStatus.TOO_MANY_REQUESTS,
-                error_type='source_deferred',
-                retry_after=remaining,
-                endpoint_host=host,
-            )
+            raise self._deferred(host, remaining)
+
+    def _hold_remaining(self, host: str) -> float:
+        """Seconds left of the host's hold: its backoff ladder's, or a Retry-After this client was given."""
+        with self._holds_lock:
+            until = self._held_until.get(host)
+        retry_after = max(0.0, until - self._clock()) if until is not None else 0.0
+        return max(self.backoff.remaining(host), retry_after)
+
+    @staticmethod
+    def _deferred(host: str, remaining: float) -> SourceError:
+        return SourceError(
+            f'{host} refused recent requests; not asked again for {remaining:.0f} s',
+            status_code=HTTPStatus.TOO_MANY_REQUESTS,
+            error_type='source_deferred',
+            retry_after=remaining,
+            endpoint_host=host,
+        )
 
     def _note_refusal(self, host: str, error: SourceError) -> float | None:
         """Hold the host back after a 429; the hold of a host with a backoff ladder, None for any other."""
@@ -225,5 +244,8 @@ class PacedHttpClient(HttpClientDecorator):
                 pacer.hold(host, min(hold, self.maximum_hold))
             return hold
         if pacer is not None and error.retry_after:
-            pacer.hold(host, min(float(error.retry_after), self.maximum_hold))
+            seconds = min(float(error.retry_after), self.maximum_hold)
+            pacer.hold(host, seconds)
+            with self._holds_lock:
+                self._held_until[host] = max(self._held_until.get(host, 0.0), self._clock() + seconds)
         return None

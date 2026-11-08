@@ -6,7 +6,8 @@ after refusing a name search on 2026-11-07), while a person's collection runs fo
 failed that way are asked again once the rest of collection is done.
 
 By default a failed request is asked once more and nothing waits: the time since the failure is the wait, and a
-source still held is refused at once by the transport (``source_deferred``) without a request. A wait budget
+host still held, even for a second, is refused at once by the transport (``source_deferred``) without a request
+(transport.refusals.without_waiting_for_holds). A wait budget
 (``deferred_retry_seconds``) lets a run that puts recall first also wait out a hold that ends soon enough.
 
 ``RetryWindow`` decides only when to ask: its callers decide what to ask again. One window is one search's budget
@@ -18,6 +19,7 @@ from collections.abc import Callable
 from typing import TypeVar
 
 from paper_author_searcher.config import CollectionConfig
+from paper_author_searcher.transport.refusals import without_waiting_for_holds
 
 T = TypeVar('T')
 
@@ -43,14 +45,20 @@ class RetryWindow:
     def again(self, ask: Callable[[], T], failure: Callable[[T], Failure]) -> T:
         """Ask once more now; while tries remain, the answer failed for throttling and its wait fits the window, wait
         and ask again."""
-        answer = ask()
+        answer = self._ask_now(ask)
         for _ in range(self.config.deferred_retry_attempts - 1):
             wait = self._wait(failure(answer))
             if wait is None:
                 break
             self._sleep(wait)
-            answer = ask()
+            answer = self._ask_now(ask)
         return answer
+
+    @staticmethod
+    def _ask_now(ask: Callable[[], T]) -> T:
+        """Only this window waits: a host still held refuses at once, so a try costs a request or nothing."""
+        with without_waiting_for_holds():
+            return ask()
 
     def _wait(self, failed: Failure) -> float | None:
         """Seconds to wait before the next try, or None: not a throttling failure, or a wait past the window."""
