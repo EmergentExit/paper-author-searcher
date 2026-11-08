@@ -66,7 +66,7 @@ python scripts/ci/replay_gate.py --replay-from career-chg --baseline baseline.de
 - `paper-benchmark compare-decisions --baseline A --candidate B`：A、B 可以是 run ID 或 decisions 文件；列出每个人的身份变化、verified 新增与丢失、其他状态变化，有差异时退出码为 1。
 - `replay_gate.py` 默认使用 `output/dblp/dblp.sqlite`（存在时），跑完会删除重放出的 run 目录（约 0.6–0.9 GB），用 `--keep` 保留。
 
-录制缓存有几 GB，只在录制它的机器上，所以这个门禁在本地运行，不在 GitHub CI 里。有意改变判定的改动（比如提高召回）门禁一定会失败，这时用 `paper-benchmark score` 给两个 run 打分，确认差异是改进再合并。
+录制缓存有几 GB，只在录制它的机器上，所以这个门禁不在 GitHub 托管的 runner 上跑，而是在装有录制数据的自托管 runner 上，对每个 PR 运行（`.github/workflows/replay-gate.yml`）。有意改变判定的改动（比如提高召回）门禁一定会失败，这时用 `paper-benchmark score` 给两个 run 打分，确认差异是改进再合并。
 
 ### 耗时
 

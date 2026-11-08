@@ -97,3 +97,9 @@ python3 -m paper_author_searcher.collection.candidate_diagnostics \
 ```
 
 该命令不合并候选、不确认教授、不给论文自动 verified，也不检索或下载 PDF。诊断数量和已知参考覆盖不能替代用户身份选择。
+
+## 相关报告
+
+本轮实际检索和优化前后对照见 [测试报告](../reports/performance/comparison.md)。人工待确认的参考论文与分层审核队列见 [审核清单](../reports/performance/ground_truth_review.md)。人工选择 Author ID 不替代逐篇归属验证；作者档案 ORCID 不单独作为论文归属正面证据。
+
+`output/` 下的运行产物（论文、PDF、manifest、HTTP 缓存）只保存在本地、不进入版本库，结论摘要在 `reports/`。

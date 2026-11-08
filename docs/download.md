@@ -9,13 +9,36 @@ python3 -m paper_author_searcher.cli.download \
   --max-downloads 3 --timeout 15 --retries 2 --max-file-mb 50
 ```
 
+```bash
+# 明确允许待审核归属；候选 URL 仍须已验证
+python3 -m paper_author_searcher.cli.download \
+  --input papers.pdf_urls.json --output-dir downloaded_papers \
+  --include-needs-review
+```
+
+已安装项目时也可运行 `pdf-download`。使用本项目 `.venv` 时，将 `python3` 替换为 `.venv/bin/python`；当前环境需要的可信 CA 配置可继续使用 `SSL_CERT_FILE=/etc/ssl/cert.pem`。下载依赖（`pypdf`、`pdfminer.six`）只在 `download` extra 中，原有其他阶段不必安装。
+
+## 传输安全
+
+HTTP 流式写入临时 `.part` 文件，默认限制单文件 128 MiB，逐块计算 SHA-256，核对实际大小和完整响应。重定向和 DNS 结果逐一检查，禁止本地/内网目标、凭据 URL 与非配置端口；连接固定到已经检查的公网 IP，同时保留原主机名的 TLS 验证。下载器不使用环境代理，不处理登录或验证码。
+
+文件头、EOF/cross-reference 及所有页面内容流通过严格 PDF 解析后才保存为 `.pdf`。文件格式与论文内容身份分别记录：内容中的 DOI/标题一致，或没有 DOI 时独特标题与完整作者署名一致，才确认身份；证据不足进入 `needs_review/`，明确的不同论文进入 `quarantine/`。程序不执行 PDF 的 JavaScript、动作或嵌入文件。
+
+文件名清理跨平台非法字符并带稳定论文哈希，按字节截断长标题，采用独占文件名预留避免覆盖。每篇论文完成后原子更新 `manifest.json`，保留所有输入条目、失败、跳过、候选尝试与历史结果。重跑会重新检查文件 SHA-256 和内容解析，并跳过完整文件；不同 URL 的同内容 PDF 共用一个本地文件，仍逐论文核对身份。没有实现 Range 分段续传，中断的未完成下载从零重新开始。
+
+## 数量限制与退出码
+
+`--max-downloads` 限制本次尝试的论文条目数，已完成文件的复用不占此额度。候选失败会继续其他已验证候选和其他论文。CLI 返回 0 表示本次无失败/内容待审核，2 表示存在失败或内容待审核且 manifest 已保存，130 表示用户中断；即使返回 0，也需查看归属、URL 和数量限制导致的跳过记录。
+
+新 PDF Resolver 报告保留 authors/year/source/source_paper_id/external_ids。旧报告缺失的作者、年份不推测补齐，文件名使用 `unknown_year`。实际下载与重跑结果见 [真实测试报告](../reports/pdf_download_sample.md)。
+
 ## 模块职责
 
-- `http.py` 复用原有请求/重试机制，流式传输、响应大小及完整性校验。
-- `network_safety.py` 对每个请求和重定向检查 DNS，固定连接到已检查的公网地址；原 Host/SNI 和 TLS 验证保留。环境代理关闭，默认只允许 80/443 端口。
-- `pdf_file_validation.py` 在带超时的子进程里运行严格 pypdf 解析，区分文件结构和论文身份；不执行 PDF 中的代码。
-- `pdf_downloader.py` 管理归属门控、候选回退、文件命名、内容去重、重跑复用及原子 manifest。
-- `download_cli.py` 处理参数和输出，不调用 Professor Resolver、Paper Collector 或 PDF Providers。
+- `transport/http.py` 复用原有请求/重试机制，流式传输、响应大小及完整性校验。
+- `transport/network_safety.py` 对每个请求和重定向检查 DNS，固定连接到已检查的公网地址；原 Host/SNI 和 TLS 验证保留。环境代理关闭，默认只允许 80/443 端口。
+- `fulltext/pdf_file_validation.py` 在带超时的子进程里运行严格 pypdf 解析，区分文件结构和论文身份；不执行 PDF 中的代码。
+- `fulltext/pdf_downloader.py` 管理归属门控、候选回退、文件命名、内容去重、重跑复用及原子 manifest。
+- `cli/download.py` 处理参数和输出，不调用 Professor Resolver、Paper Collector 或 PDF Providers。
 
 ## 配置
 
